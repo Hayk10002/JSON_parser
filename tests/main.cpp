@@ -1,7 +1,11 @@
+#include <iostream>
+
 #include "json_parser.hpp"
+
+using namespace hayk10002;
 
 int main()
 {
-    say_hello();
+    Json value;
     return 0;
 }
