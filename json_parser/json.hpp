@@ -23,6 +23,7 @@ namespace hayk10002
         using BoolType      = bool;
         using IntType       = int64_t;
         using FloatType     = double;
+        using CharType      = char;
         using StringType    = std::string;
 
         template<typename T = Json>
