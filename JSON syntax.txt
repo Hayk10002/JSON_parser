@@ -1,119 +1,60 @@
 Syntax specification of Json used in this project
 This is pseudocode
 
+// Type = The name of the parser class
+// InputType = type to parse from
+// ReturnType = In case of successfull parsing the parsed value
+// ErrorType = In case of failed parsing the error
+// InfoType = Additional info that will be stored in the parser object after parsing, this 
 
-// Type = json_parse_types::Json
+
+// Type = parse_types::Char
 // InputType = stringstream
-// ReturnType = Json 
-// ErrorType = ...
-json = seq(ws value ws)
+// ReturnType = char
+// ErrorType = variant<UnexpectedCharacter, ExpectedAChar>
+char(func(char)->bool accepted) -> char
 
-// Type = json_parse_types::Value
+// Type = parse_types::String
 // InputType = stringstream
-// ReturnType = Json 
-// ErrorType = ...
-value = or(object array string number_int number_float boolean null)
+// ReturnType = std::string
+// ErrorType = variant<UnexpectedCharacter, ExpectedAChar>
+// InfoType = std::string (the part that got parsed successfully (if parsing "nuke" and trying to get "null", this info will hold "nu"))
+str(string accepted) -> string
 
-// Type = json_parse_types::Object
+// Type = parse_types::UnicodeChar
 // InputType = stringstream
-// ReturnType = Json::ObjectType 
-// ErrorType = ...
-object = seq(char('{') or(ws cycle(seq(ws string ws char(':') json) char(','))) char('}'))
-
-// Type = json_parse_types::Array
-// InputType = stringstream
-// ReturnType = Json::ArrayType
-// ErrorType = ...
-array = seq(char('[') or(ws cycle(json char(','))) char(']'))
-
-// Type = json_parse_types::String
-// InputType = stringstream
-// ReturnType = Json::StringType
-// ErrorType = ...
-string = seq(char('"') cycle(or(unicode_char('0020' . '10FFFF' - '"' - '\') seq(char('\') escape))) char('"'))
-
-// Type = json_parse_types::NumberInt
-// InputType = stringstream
-// ReturnType = Json::IntType
-// ErrorType = ...
-number_int = seq(or(nothing char('-')) or(digit seq(onenine digits)))
-
-// Type = json_parse_types::NumberFloat
-// InputType = stringstream
-// ReturnType = Json::FloatType
-// ErrorType = ...
-number_float = seq(number_int or(fraction exponent seq(fraction exponent)))
-
-// Type = json_parse_types::Bool
-// InputType = stringstream
-// ReturnType = Json::BooleanType
-// ErrorType = ...
-boolean = or(str("true") str("false"))
-
-// Type = json_parse_types::Null
-// InputType = stringstream
-// ReturnType = Json::NullType
-// ErrorType = ...
-null = str("null")
-
-// Type = json_parse_types::Whitespace
-// InputType = stringstream
-// ReturnType = Json::NullType
-// ErrorType = ...
-ws = cycle(char('0020' + '000A' + '000D' + '0009'))
-
-// Type = json_parse_types::Escape
-// InputType = stringstream
-// ReturnType = Json::StringType
-// ErrorType = ...
-escape = or(char('"' + '\' + '/' + 'b' + 'f' + 'n' + 'r' + 't') seq(char('u') hex hex hex hex))
-
-// Type = json_parse_types::Hex
-// InputType = stringstream
-// ReturnType = Json::CharType (value can be from 0 to 15)
-// ErrorType = 
-hex = char('0' . '9' + 'A' . 'F' + 'a' . 'f')
-
-// Type = json_parse_types::Digit
-// InputType = stringstream
-// ReturnType = Json::CharType (value can be from 0 to 9)
-// ErrorType = ...
-digit = char('0' . '9')
-
-// Type = json_parse_types::Fraction
-// InputType = stringstream
-// ReturnType = Json::FloatType
-// ErrorType = ...
-fraction = seq(char('.') digits)
-
-// Type = json_parse_types::Exponent
-// InputType = stringstream
-// ReturnType = Json::IntType
-// ErrorType = ...
-exponent = seq(char('e' + 'E') sign digits)
-
-// Type = json_parse_types::OneNine
-// InputType = stringstream
-// ReturnType = Json::CharType (value can be from 1 to 9)
-// ErrorType = ...
-onenine = char('1' . '9')
-
-// Type = json_parse_types::Sign
-// InputType = stringstream
-// ReturnType = Json::BooleanType 
-// ErrorType = ...
-sign = or(nothing char('-' + '+'))
-
-// Type = json_parse_types::Digits
-// InputType = stringstream
-// ReturnType = Json::ArrayTypeT<Json::CharType>
-// ErrorType = ...
-digits = cycle(digit)
-
-
-char(accepted) -> char
-str(accepted) -> string
+// ReturnType = utf8_string
+// ErrorType = variant<UnexpectedCharacter, ExpectedAChar>
 unicode_char(accepted) -> utf8_string
+
+// Type = parse_types::Seq
+// InputType = stringstream
+// ReturnType = tuple<...>
+// ErrorType = variant<errorType1, errorType2, ...>
+// InfoType = tuple<std::optional<Type1>, std::optional<Type2>...> In case of success, fully empty, in case of error, K-th elem has value => this part was successfully parsed and the error occurred later 
 seq -> tuple
+
+// Type = parse_types::Or
+// InputType = stringstream
+// ReturnType = variant<...>
+// ErrorType = tuple<errorType1, errorType2, ...>
+// InfoType = tuple<std::optional<errorType1>, std::optional<errorType2>, ...> In case of error, fully empty, in case of success, K-th elem has error => this part failed to be parsed and some next element got parsed instead
+// Order dependent, will prefer the first variant over the second if both can be parsed
 or -> variant
+
+// Type = parse_types::Cycle
+// InputType = stringstream
+// ReturnType = vector<elem::ReturnType>
+// ErrorType = NoError  (because in any case cycle can match to nothing, so it will match always)
+// InfoType = variant<elem::ErrorType, separator::ErrorType> (info about what was failed to parse)
 cycle(elem separator) -> vector (nothing or elem or elem+separator+elem or elem+separator+elem+separator+elem or ....)
+cycle(elem) = cycle(elem nothing)
+
+// Type = parse_types::Nothing
+// InputType = stringstream
+// ReturnType = std::monospace
+// ErrorType = NoError
+nothing -> std::monostate
+
+
+NoError = NonConstructible
