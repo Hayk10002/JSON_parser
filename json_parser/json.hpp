@@ -9,11 +9,10 @@
 #include <string>
 #include <algorithm>
 
+#include "utils.hpp"
+#include "utf8_string.hpp"
 namespace hayk10002
 {   
-    //helper struct to overload lambda functions 
-    template<class... Ts>
-    struct overloaded : Ts... { using Ts::operator()...; };
 
 
     class Json
@@ -24,7 +23,7 @@ namespace hayk10002
         using IntType       = int64_t;
         using FloatType     = double;
         using CharType      = char;
-        using StringType    = std::string;
+        using StringType    = UTF8string;
 
         template<typename T = Json>
         using ArrayTypeT    = std::vector<T>;
@@ -63,7 +62,7 @@ namespace hayk10002
                 [&out](const BoolType&      arg) { out << (arg ? "true" : "false"); },
                 [&out](const IntType&       arg) { out << arg; },
                 [&out](const FloatType&     arg) { out << arg; },
-                [&out](const StringType&    arg) { out << std::quoted(arg); },
+                [&out](const StringType&    arg) { out << "\"" << arg << "\""; },
                 [&out](const ArrayType&     arg) 
                 { 
                     out << '[';
@@ -77,7 +76,7 @@ namespace hayk10002
                     for (const auto& [key, value] : arg) 
                     {
                         if (!first) out << ", ";
-                        out << std::quoted(key) << ": " << value;
+                        out << "\"" << key << "\"" << ": " << value;
                         first = false;
                     }
                     out << '}';
