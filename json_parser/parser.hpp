@@ -3,6 +3,7 @@
 #include <optional>
 #include <variant>
 #include <tuple>
+#include <vector>
 #include <concepts>
 #include <span>
 
@@ -11,6 +12,8 @@
 
 namespace hayk10002::parser_types
 {
+    using NoError = NonConstructible;
+
     /// Concept for parsers
     /// Expected from all parser types, that if parsing failes, the input will not be modified (cannot enforce this)
     template<typename T>
@@ -110,7 +113,7 @@ namespace hayk10002::parser_types
         const InfoType& get_info() { return m_info; }
     };
 
-        /// @brief A parser, that can run other parsers and if one of them succeds, this returns the successfully parsed value
+    /// @brief A parser, that can run other parsers and if one of them succeds, this returns the successfully parsed value
     template<ParserType FirstType, ParserType ...Types>
         // All input types need to be the same type
         requires (std::same_as<typename FirstType::InputType, typename Types::InputType> && ...)
@@ -190,4 +193,88 @@ namespace hayk10002::parser_types
         // Returns additional info about the last parse call
         const InfoType& get_info() { return m_info; }
     };
+
+    /// @brief Parse nothing from input, can be use in combination with parser_types::Or
+    template<typename InputT>
+    struct Nothing
+    {
+        using InputType = InputT;
+        using ReturnType = std::monostate;
+        using ErrorType = NoError;
+
+        // do nothing
+        itlib::expected<ReturnType, ErrorType> parse(const std::span<InputType>& input)
+        {
+            return ReturnType{};
+        }   
+    };
+
+    /// @brief A parser, runs parsers in cycle until gets an error
+    template<ParserType MainType, ParserType SeparatorType = Nothing<typename MainType::InputType>>
+        // All input types need to be the same type
+        requires std::same_as<typename MainType::InputType, typename SeparatorType::InputType>
+    class Cycle
+    {
+        inline static Nothing<typename MainType::InputType> nothing_parser{};
+    public:
+        using InputType = typename MainType::InputType;
+
+        // In case of success  
+        using ReturnType = std::vector<typename MainType::ReturnType>;
+
+        // Cycle will never return error
+        using ErrorType = NoError;
+
+        // Information about what failed
+        using InfoType = std::variant<typename MainType::ErrorType, typename SeparatorType::ErrorType>;
+
+        Cycle(MainType& main_parser, SeparatorType& separator_parser = nothing_parser) : m_main_parser{main_parser}, m_separator_parser{separator_parser} {}
+
+    private:
+        InfoType m_info{};
+        MainType& m_main_parser;
+        SeparatorType& m_separator_parser;
+
+    public:
+        itlib::expected<ReturnType, ErrorType> parse(std::span<InputType>& input)
+        {
+            ReturnType return_val{};
+
+            // parse a value, in case of an error save it in m_info and return empty vector, else push the parsed value into the vector
+            auto res = m_main_parser.parse(input);
+            if(res.has_error())
+            {
+                m_info = InfoType{std::in_place_index_t<0>{}, std::move(res).error()};
+                return return_val;
+            }
+            else return_val.emplace_back(std::move(res).value());
+
+            while(true)
+            {
+                // parse a separator, in case of an error save it in m_info and return already parsed values
+                auto sep_res = m_separator_parser.parse(input);
+                if(sep_res.has_error())
+                {
+                    m_info = InfoType{std::in_place_index_t<1>{}, std::move(sep_res).error()};
+                    return return_val;
+                }
+
+                // parse a value, in case of an error save it in m_info and return already parsed values, else push the parsed value into the vector
+                auto val_res = m_main_parser.parse(input);
+                if(val_res.has_error())
+                {
+                    m_info = InfoType{std::in_place_index_t<0>{}, std::move(val_res).error()};
+                    return return_val;
+                }
+                else return_val.emplace_back(std::move(val_res).value());   
+            }
+
+            // meant to be unreachable
+            return return_val;
+        }
+        
+        // Returns additional info about the last parse call
+        const InfoType& get_info() { return m_info; }
+    };
+
 }
