@@ -32,12 +32,14 @@ endfunction()
 # Define a list of header files
 set(HEADER_FILES
     parser.hpp
+    json_parser.hpp
     expected.hpp
     utils.hpp
 )
 
 # The targets of each header file defined above
 set(TARGET_NAMES
+    json_parser
     json_parser
     utils
     utils
