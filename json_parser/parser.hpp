@@ -14,6 +14,15 @@ namespace hayk10002::parser_types
 {
     using NoError = NonConstructible;
 
+    /// Concept for parsers' input's type
+    /// required to have a get_pos and a set_pos member functions
+    /// and the value got from get_pos can be used as a parameter to set_pos
+    template<typename T>
+    concept ParserInputType = requires(T t)
+    {
+        { t.set_pos(t.get_pos()) };
+    };
+
     /// Concept for parsers
     /// Expected from all parser types, that if parsing failes, the input will not be modified (cannot enforce this)
     template<typename T>
@@ -24,7 +33,7 @@ namespace hayk10002::parser_types
         typename T::ReturnType;
         typename T::ErrorType;
 
-        requires std::is_copy_assignable_v<typename T::InputType>;
+        requires ParserInputType<typename T::InputType>;
         // requires the type to have a function named parse, that will take a parameter with type std::span<InputType>, and return a value or error with type itlib::expected<ReturnType, ErrorType>
         requires requires(T t, typename T::InputType& input)
         { 
@@ -142,7 +151,7 @@ namespace hayk10002::parser_types
         itlib::expected<ReturnType, ErrorType> parse(InputType& input)
         {
             // in case of error, we need backup to restore the input to its starting state
-            std::span input_backup = input;
+            auto backup_pos = input.get_pos();
 
             // will hold the error in case of one
             std::optional<ErrorType> return_err{};
@@ -168,7 +177,7 @@ namespace hayk10002::parser_types
                 else
                 {
                     // else restore the input and save the error
-                    input = input_backup;
+                    input.set_pos(backup_pos);
                     return_err = ErrorType{std::in_place_index_t<I>{}, std::move(res).error()};
                 }
 
