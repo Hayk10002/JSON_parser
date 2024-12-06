@@ -17,15 +17,16 @@ namespace hayk10002::parser_types
     /// Concept for parsers
     /// Expected from all parser types, that if parsing failes, the input will not be modified (cannot enforce this)
     template<typename T>
-    concept ParserType = requires(T t)
+    concept ParserType = requires
     {
         // requires the type to have associated types for input, return and error types
         typename T::InputType;
         typename T::ReturnType;
         typename T::ErrorType;
 
+        requires std::is_copy_assignable_v<typename T::InputType>;
         // requires the type to have a function named parse, that will take a parameter with type std::span<InputType>, and return a value or error with type itlib::expected<ReturnType, ErrorType>
-        requires requires(std::span<typename T::InputType>& input)
+        requires requires(T t, typename T::InputType& input)
         { 
             { t.parse(input) } -> std::same_as<itlib::expected<typename T::ReturnType, typename T::ErrorType>>;
         };
@@ -58,7 +59,7 @@ namespace hayk10002::parser_types
         std::tuple<FirstType&, Types&...> m_parsers;
 
     public:
-        itlib::expected<ReturnType, ErrorType> parse(std::span<InputType>& input)
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
         {
             // if a return value is present, hold it
             std::optional<ReturnType> return_val{};
@@ -138,7 +139,7 @@ namespace hayk10002::parser_types
         std::tuple<FirstType&, Types&...> m_parsers;
 
     public:
-        itlib::expected<ReturnType, ErrorType> parse(std::span<InputType>& input)
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
         {
             // in case of error, we need backup to restore the input to its starting state
             std::span input_backup = input;
@@ -203,7 +204,7 @@ namespace hayk10002::parser_types
         using ErrorType = NoError;
 
         // do nothing
-        itlib::expected<ReturnType, ErrorType> parse(const std::span<InputType>& input)
+        itlib::expected<ReturnType, ErrorType> parse(const InputType& input)
         {
             return ReturnType{};
         }   
@@ -236,7 +237,7 @@ namespace hayk10002::parser_types
         SeparatorType& m_separator_parser;
 
     public:
-        itlib::expected<ReturnType, ErrorType> parse(std::span<InputType>& input)
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
         {
             ReturnType return_val{};
 

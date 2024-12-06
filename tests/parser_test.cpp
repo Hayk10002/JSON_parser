@@ -11,7 +11,7 @@ using hayk10002::parser_types::Cycle;
 
 struct TrueParser
 {
-    using InputType = char;
+    using InputType = std::span<char>;
     using ReturnType = bool;
     using ErrorType = std::string;
 
@@ -25,7 +25,7 @@ struct TrueParser
 
 struct FalseParser
 {
-    using InputType = char;
+    using InputType = std::span<char>;
     using ReturnType = bool;
     using ErrorType = std::string;
 
@@ -39,7 +39,7 @@ struct FalseParser
 
 struct BoolParser
 {
-    using InputType = char;
+    using InputType = std::span<char>;
     using ReturnType = bool;
     using ErrorType = std::string;
 
@@ -65,7 +65,7 @@ struct TwoOrThreeBoolsParser
     itlib::expected<ReturnType, ErrorType> parse(std::span<char>& input)
     {
         BoolParser bp{};
-        Nothing<char> np{};
+        Nothing<std::span<char>> np{};
         Or b_or_np{bp, np};
         Seq p{bp, bp, b_or_np};
 
@@ -87,7 +87,7 @@ struct GreedyEveryOtherBoolParser
     itlib::expected<ReturnType, ErrorType> parse(std::span<char>& input)
     {
         BoolParser bp{};
-        
+
         // parses one bool value as a value, and one as a separator, so "truefalsetrue" will be parsed to [1, 1] (the middle "false" was regarded as a separator and value thrown away)
         Cycle p{bp, bp};
 
