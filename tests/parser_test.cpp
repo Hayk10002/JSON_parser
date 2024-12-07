@@ -9,41 +9,51 @@ using hayk10002::parser_types::Seq;
 using hayk10002::parser_types::Nothing;
 using hayk10002::parser_types::Cycle;
 
+struct SpanWrapper
+{
+    std::span<char> span;
+    std::span<char> get_pos() { return span; }
+    void set_pos(std::span<char> span) { this->span = span; }
+
+    SpanWrapper(std::span<char> sp): span{sp} {}
+    operator std::span<char>() { return span; }
+};
+
 struct TrueParser
 {
-    using InputType = std::span<char>;
+    using InputType = SpanWrapper;
     using ReturnType = bool;
     using ErrorType = std::string;
 
-    itlib::expected<ReturnType, ErrorType> parse(std::span<char>& input)
+    itlib::expected<ReturnType, ErrorType> parse(SpanWrapper& input)
     {
-        if(input.size() < 4 || std::string_view{input.begin(), input.begin() + 4} != "true") return itlib::unexpected("Expected \"true\"");
-        input = input.subspan(4);
+        if(input.span.size() < 4 || std::string_view{input.span.begin(), input.span.begin() + 4} != "true") return itlib::unexpected("Expected \"true\"");
+        input = input.span.subspan(4);
         return true;
     }
 };
 
 struct FalseParser
 {
-    using InputType = std::span<char>;
+    using InputType = SpanWrapper;
     using ReturnType = bool;
     using ErrorType = std::string;
 
-    itlib::expected<ReturnType, ErrorType> parse(std::span<char>& input)
+    itlib::expected<ReturnType, ErrorType> parse(SpanWrapper& input)
     {
-        if(input.size() < 5 || std::string_view{input.begin(), input.begin() + 5} != "false") return itlib::unexpected("Expected \"false\"");
-        input = input.subspan(5);
+        if(input.span.size() < 5 || std::string_view{input.span.begin(), input.span.begin() + 5} != "false") return itlib::unexpected("Expected \"false\"");
+        input = input.span.subspan(5);
         return false;
     }
 };
 
 struct BoolParser
 {
-    using InputType = std::span<char>;
+    using InputType = SpanWrapper;
     using ReturnType = bool;
     using ErrorType = std::string;
 
-    itlib::expected<ReturnType, ErrorType> parse(std::span<char>& input)
+    itlib::expected<ReturnType, ErrorType> parse(SpanWrapper& input)
     {
         TrueParser tp{};
         FalseParser fp{};
@@ -58,14 +68,14 @@ struct BoolParser
 
 struct TwoOrThreeBoolsParser
 {
-    using InputType = char;
+    using InputType = SpanWrapper;
     using ReturnType = std::vector<bool>;
     using ErrorType = std::string;
 
-    itlib::expected<ReturnType, ErrorType> parse(std::span<char>& input)
+    itlib::expected<ReturnType, ErrorType> parse(SpanWrapper& input)
     {
         BoolParser bp{};
-        Nothing<std::span<char>> np{};
+        Nothing<SpanWrapper> np{};
         Or b_or_np{bp, np};
         Seq p{bp, bp, b_or_np};
 
@@ -80,11 +90,11 @@ struct TwoOrThreeBoolsParser
 
 struct GreedyEveryOtherBoolParser
 {
-    using InputType = char;
+    using InputType = SpanWrapper;
     using ReturnType = std::vector<bool>;
     using ErrorType = std::string;
 
-    itlib::expected<ReturnType, ErrorType> parse(std::span<char>& input)
+    itlib::expected<ReturnType, ErrorType> parse(SpanWrapper& input)
     {
         BoolParser bp{};
 
@@ -107,7 +117,7 @@ int main() {
         std::string input;
         if (i < 4) input = std::string(i / 2 ? "true" : "false") + (i % 2 ? "true" : "false");
         else input = std::string((i - 4) / 4 ? "true" : "false") + ((i - 4) / 2 % 2 ? "true" : "false") + ((i - 4) % 2 ? "true" : "false");
-        std::span input_span = input;
+        SpanWrapper input_span{input};
         auto res = parser.parse(input_span);
         if (res.has_value())
         {
@@ -131,7 +141,7 @@ int main() {
         input += (val ? "true" : "false");
     }
     std::cout << std::endl << input << std::endl;
-    std::span input_span = input;
+    SpanWrapper input_span{input};
     auto res = parser2.parse(input_span);
     std::cout << "value";
     for(bool val: res.value()) std::cout << val;
