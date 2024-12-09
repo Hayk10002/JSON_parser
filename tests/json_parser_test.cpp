@@ -18,17 +18,17 @@ int main() {
         assert(c.move(6) == "Lorem ");
         assert(c.move(-7) == "Lorem ");
         assert(c.move(66) == "Lorem ipsum dolor sit amet, consectetuer adipiscing elit.\nAenean c");
-        assert(c.get_pos() == Cursor::Position(66, 1, 8));
+        assert(c.get_pos() == Position(66, 1, 8));
         assert(c.move(16) == "ommodo .\nAenean ");
         assert(c.next() == 'm');
-        assert(c.get_pos() == Cursor::Position(83, 2, 8));
+        assert(c.get_pos() == Position(83, 2, 8));
         assert(c.move(-30) == "lit.\nAenean commodo .\nAenean m");
-        assert(c.get_pos() == Cursor::Position(53, 0, 53));
+        assert(c.get_pos() == Position(53, 0, 53));
         assert(c.move(100000) == "lit.\nAenean commodo .\nAenean massa.\nCum sociis .\nDonec ");
-        assert(c.get_pos() == Cursor::Position(108, 4, 6));
+        assert(c.get_pos() == Position(108, 4, 6));
         assert(c.next() == std::nullopt);
         c.set_pos(66);
-        assert(c.get_pos() == Cursor::Position(66, 1, 8));
+        assert(c.get_pos() == Position(66, 1, 8));
     }
 
     return 0;
