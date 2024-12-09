@@ -1,6 +1,7 @@
 #pragma once
 
 #include <tuple>
+#include <variant>
 
 namespace hayk10002
 {
@@ -60,4 +61,13 @@ namespace hayk10002
     {
         return std::tuple<decltype(function.template operator()<Is>())...>{function.template operator()<Is>()...};
     }
+
+    template<typename FVar, typename SVar>
+    struct variant_sum { using type = void; };
+
+    template<typename ...FTypes, typename ...STypes>
+    struct variant_sum<std::variant<FTypes...>, std::variant<STypes...>> { using type = std::variant<FTypes..., STypes...>; };
+
+    template<typename FVar, typename SVar>
+    using variant_sum_t = typename variant_sum<FVar, SVar>::type;
 }

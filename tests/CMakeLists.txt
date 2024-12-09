@@ -33,6 +33,7 @@ endfunction()
 set(HEADER_FILES
     parser.hpp
     json_parser.hpp
+    parser_error.hpp
     position.hpp
     expected.hpp
     utils.hpp
@@ -40,6 +41,7 @@ set(HEADER_FILES
 
 # The targets of each header file defined above
 set(TARGET_NAMES
+    json_parser
     json_parser
     json_parser
     json_parser
