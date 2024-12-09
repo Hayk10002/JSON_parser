@@ -1,10 +1,12 @@
+#pragma once
+
 #include <concepts>
 #include <exception>
 #include <variant>
 #include <string>
 #include <format>
 
-#include <position.hpp>
+#include "position.hpp"
 
 namespace hayk10002
 {
@@ -15,7 +17,7 @@ namespace hayk10002
         
         virtual const char* what() const noexcept override
         {
-            return std::visit([](const auto& arg){ return arg.what(); });
+            return std::visit([this](const auto& arg){ return arg.what(); }, inner);
         }
 
         template<std::derived_from<std::exception> ...ETs>

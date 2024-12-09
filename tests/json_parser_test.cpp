@@ -2,6 +2,7 @@
 #include "cassert"
 
 using hayk10002::json_parser::lexer::Cursor;
+using hayk10002::json_parser::lexer::Position;
 
 int main() {
 
