@@ -1,7 +1,6 @@
 #pragma once
 
 #include <tuple>
-#include <variant>
 
 namespace hayk10002
 {
@@ -63,11 +62,11 @@ namespace hayk10002
     }
 
     template<typename FVar, typename SVar>
-    struct variant_sum { using type = void; };
+    struct param_pack_sum { using type = void; };
 
-    template<typename ...FTypes, typename ...STypes>
-    struct variant_sum<std::variant<FTypes...>, std::variant<STypes...>> { using type = std::variant<FTypes..., STypes...>; };
+    template<template <typename ...T> typename ContainerT, typename ...FTypes, typename ...STypes>
+    struct param_pack_sum<ContainerT<FTypes...>, ContainerT<STypes...>> { using type = ContainerT<FTypes..., STypes...>; };
 
     template<typename FVar, typename SVar>
-    using variant_sum_t = typename variant_sum<FVar, SVar>::type;
+    using param_pack_sum_t = typename param_pack_sum<FVar, SVar>::type;
 }

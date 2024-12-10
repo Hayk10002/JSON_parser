@@ -53,6 +53,7 @@ int main() {
         assert(dp.parse(input).value() == 0);
         assert(dp.parse(input).has_error());
         assert(input.next() == 'f');
+        input.move(-1);
 
         HexDigitParser hdp;
         assert(hdp.parse(input).value() == 15);
