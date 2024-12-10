@@ -261,7 +261,7 @@ namespace hayk10002::json_parser::lexer
             // if not reached end of input, then one character was read after the literals end, so unread it
             if (!end_of_input) input.move(-1);
 
-            // check for accepte literals
+            // check for accepted literals
             if (val == "true") return TokenLiteral{true};
             if (val == "false") return TokenLiteral{false};
             if (val == "null") return TokenLiteral{};
