@@ -9,6 +9,7 @@
 #include <string>
 #include <algorithm>
 
+#include "json_traits.hpp"
 #include "utils.hpp"
 #include "utf8_string.hpp"
 namespace hayk10002
@@ -18,20 +19,13 @@ namespace hayk10002
     class Json
     {
     public:
-        using NullType      = std::monostate;
-        using BoolType      = bool;
-        using IntType       = int64_t;
-        using FloatType     = double;
-        using CharType      = char;
-        using StringType    = UTF8string;
-
-        template<typename T = Json>
-        using ArrayTypeT    = std::vector<T>;
-        using ArrayType     = ArrayTypeT<>;
-
-        template<typename T = Json>
-        using ObjectTypeT   = std::unordered_map<StringType, T>; 
-        using ObjectType    = ObjectTypeT<>;
+        using NullType      = typename json_traits<Json>::NullType;
+        using BoolType      = typename json_traits<Json>::BoolType;
+        using IntType       = typename json_traits<Json>::IntType;
+        using FloatType     = typename json_traits<Json>::FloatType;
+        using StringType    = typename json_traits<Json>::StringType;
+        using ArrayType     = typename json_traits<Json>::ArrayType;
+        using ObjectType    = typename json_traits<Json>::ObjectType;
 
     private:
         
