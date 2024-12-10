@@ -14,7 +14,7 @@
 namespace hayk10002::json_parser::lexer
 {
     /// @brief token for literal values
-    struct TokenNull { std::variant<typename json_traits<Json>::NullType, typename json_traits<Json>::BoolType> value; };
+    struct TokenLiteral { std::variant<typename json_traits<Json>::NullType, typename json_traits<Json>::BoolType> value; };
 
     /// @brief token for number values
     struct TokenNumber { std::variant<typename json_traits<Json>::IntType, typename json_traits<Json>::FloatType> value; };
