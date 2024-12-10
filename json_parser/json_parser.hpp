@@ -9,9 +9,33 @@
 #include "position.hpp"
 #include "parser_error.hpp"
 #include "parser.hpp"
+#include "json_traits.hpp"
 
 namespace hayk10002::json_parser::lexer
 {
+    /// @brief token for literal values
+    struct TokenNull { std::variant<typename json_traits<Json>::NullType, typename json_traits<Json>::BoolType> value; };
+
+    /// @brief token for number values
+    struct TokenNumber { std::variant<typename json_traits<Json>::IntType, typename json_traits<Json>::FloatType> value; };
+
+    /// @brief token for string values
+    struct TokenString { typename json_traits<Json>::StringType value; };
+
+    /// @brief token for syntax related characters
+    struct TokenSyntax
+    { 
+        enum : char
+        {
+            COMMA,
+            SEMICOLON,
+            ARRAY_START,
+            ARRAY_END,
+            OBJECT_START,
+            OBJECT_END,
+        } type;
+    };
+
     class Cursor
     {
 
