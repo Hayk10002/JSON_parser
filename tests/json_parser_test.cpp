@@ -35,6 +35,7 @@ int main() {
         assert(c.get_pos() == Position(66, 1, 8));
     }
 
+    // test Char, Digit, HexDigit parsers
     {
         int index = 0;
         std::function f = [&index](char x)
@@ -58,7 +59,6 @@ int main() {
         assert(hdp.parse(input).value() == 10);
         assert(hdp.parse(input).has_error());
         assert(input.next() == 'l');
-
     }
 
     return 0;
