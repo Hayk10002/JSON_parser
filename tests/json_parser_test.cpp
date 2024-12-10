@@ -1,11 +1,13 @@
 #include "json_parser.hpp"
-#include "cassert"
+#include <cassert>
+#include <iostream>
 
 using hayk10002::json_parser::lexer::Cursor;
 using hayk10002::json_parser::lexer::Position;
 using hayk10002::json_parser::lexer::CharParser;
 using hayk10002::json_parser::lexer::DigitParser;
 using hayk10002::json_parser::lexer::HexDigitParser;
+using hayk10002::json_parser::lexer::TokenLiteralLexer;
 
 int main() {
 
@@ -60,6 +62,25 @@ int main() {
         assert(hdp.parse(input).value() == 10);
         assert(hdp.parse(input).has_error());
         assert(input.next() == 'l');
+        input.move(2);
+    }
+
+    // test TokenLiteralLexer
+    {
+        Cursor input{"true false Falseval null Null"};
+        TokenLiteralLexer ll;
+        assert(std::get<bool>(ll.parse(input).value().value) == true);
+        input.next();
+        assert(std::get<bool>(ll.parse(input).value().value) == false);
+        input.next();
+        auto res = ll.parse(input);
+        assert(res.has_error()); std::cout << res.error().what();
+        input.move(9);
+        assert(ll.parse(input).value().value.index() == 0);
+        input.next();
+        ll.parse(input);
+        assert(res.has_error()); std::cout << res.error().what();
+        input.move(4);
     }
 
     return 0;

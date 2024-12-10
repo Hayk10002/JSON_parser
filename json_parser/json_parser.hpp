@@ -226,4 +226,51 @@ namespace hayk10002::json_parser::lexer
             return -1;
         }
     };
+
+    /// @brief parses a literal ('null', 'true' or 'false')
+    class TokenLiteralLexer
+    {
+    public:
+        using InputType = Cursor;
+        using ReturnType = TokenLiteral;
+        using ErrorType = ParserError<InvalidLiteral, UnexpectedEndOfInput>;
+
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
+        {
+            Position start_pos = input.get_pos();
+
+            // read letters, and store them in val
+            std::string val = "";
+
+            // stores true if reached end of input
+            bool end_of_input = true;
+
+            // read a character while can
+            while (auto ch = input.next())
+            {
+                // if a letter, add to val
+                if (std::isalpha(*ch)) val += *ch;
+
+                // else set end_of_input false, and stop reading
+                else { end_of_input = false; break; }
+            }
+
+            // if reached end of input but read nothing
+            if (end_of_input && val == "") return itlib::unexpected(UnexpectedEndOfInput(start_pos));
+
+            // if not reached end of input, then one character was read after the literals end, so unread it
+            if (!end_of_input) input.move(-1);
+
+            // check for accepte literals
+            if (val == "true") return TokenLiteral{true};
+            if (val == "false") return TokenLiteral{false};
+            if (val == "null") return TokenLiteral{};
+
+            // in case of failure set input to starting pos
+            input.set_pos(start_pos);
+
+            return itlib::unexpected(InvalidLiteral(start_pos, val));
+
+        }
+    };
 }

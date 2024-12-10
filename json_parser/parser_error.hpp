@@ -63,5 +63,16 @@ namespace hayk10002
 
             virtual const char* what() const noexcept override { return m_message.c_str(); }
         };
+
+        class InvalidLiteral : public std::exception
+        {
+            std::string m_message;
+        public:
+            InvalidLiteral(const Position& pos, std::string_view found):
+                m_message(std::format("Invalid literal (\"{}\") at line: {}, col: {}  (pos: {}). Expected \"null\", \"true\" or \"false\".", found, pos.line, pos.col, pos.pos))
+            {}
+
+            virtual const char* what() const noexcept override { return m_message.c_str(); }
+        };
     }
 }
