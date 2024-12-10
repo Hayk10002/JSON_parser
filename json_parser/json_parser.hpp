@@ -4,8 +4,12 @@
 #include <vector>
 #include <format>
 #include <optional>
+#include <functional>
 
-#include <position.hpp>
+#include "position.hpp"
+#include "parser_error.hpp"
+#include "parser.hpp"
+
 namespace hayk10002::json_parser::lexer
 {
     class Cursor
@@ -105,5 +109,97 @@ namespace hayk10002::json_parser::lexer
             else return std::nullopt;
         }
 
+    };
+
+    /// @brief parses a character if provided function returns true for that character
+    class CharParser
+    {
+    public:
+        using InputType = Cursor;
+        using ReturnType = char;
+        using ErrorType = ParserError<UnexpectedCharacter, UnexpectedEndOfInput>;
+
+    private:
+        std::function<bool(char)> m_accept;
+        std::string m_expected_text{};
+
+    public:
+        /// @param accept_char function that takes char, returns bool, indicates what characters are accepted, and what are not
+        /// @param expected_text optional text to print if the character is not accepte by the function (error message will say  "Unexpected character at {some position}. Expected {expected_text}.")
+        /// @note if expected_text is empty, the "Expected {expected_text}" part will not appear in the error message at all
+        CharParser(std::function<bool(char)> accept_char, std::string_view expected_text = ""): m_accept(accept_char), m_expected_text(expected_text) {}
+
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
+        {
+            // get next character from input
+            auto ch = input.next();
+
+            // if successfull
+            if (ch)
+            {
+                // check if the character is accepted by the provided function
+                if (m_accept(*ch)) return std::move(*ch);
+                else 
+                {
+                    // error unexpected character, move cursor one place back, because in case of error parsers are expected to not change the input
+                    input.move(-1);
+                    return itlib::unexpected(UnexpectedCharacter(input.get_pos(), m_expected_text));
+                }
+            } 
+            // no next character (end of input)
+            else 
+            {
+                // error unexpected end of input, move cursor one place back, because in case of error parsers are expected to not change the input
+                input.move(-1);
+                return itlib::unexpected(UnexpectedEndOfInput(input.get_pos()));
+            }
+        }
+    };
+
+    /// @brief parses a digit (characters from 0 to 9), returns number values (for '0' returns 0, not '0')
+    class DigitParser
+    {
+    public:
+        using InputType = Cursor;
+        using ReturnType = int;
+        using ErrorType = ParserError<UnexpectedCharacter, UnexpectedEndOfInput>;
+
+    private:
+        CharParser m_chp;
+
+    public:
+        DigitParser(): m_chp([](char ch) { return ch >= '0' && ch <= '9'; }, "a digit (from 0 to 9)"){}
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
+        {
+            auto res = m_chp.parse(input);
+            if (res.has_error()) return itlib::unexpected(res.error());
+            return res.value() - '0';
+        }
+    };
+
+    /// @brief parses a hes digit (characters from 0 to 9, a to f, A to F), returns number values (for '0' returns 0, not '0')
+    class HexDigitParser
+    {
+    public:
+        using InputType = Cursor;
+        using ReturnType = int;
+        using ErrorType = ParserError<UnexpectedCharacter, UnexpectedEndOfInput>;
+
+    private:
+        CharParser m_chp;
+
+    public:
+        HexDigitParser(): m_chp([](char ch) { return ch >= '0' && ch <= '9' || ch >= 'A' && ch <= 'F' || ch >= 'a' && ch <= 'f'; }, "a hex digit (from 0 to 9, a to f or A to F)"){}
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
+        {
+            auto res = m_chp.parse(input);
+            if (res.has_error()) return itlib::unexpected(res.error());
+            char ch = res.value();
+            if (ch >= '0' && ch <= '9') return ch - '0';
+            if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
+            if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
+            // unreachable
+            return -1;
+        }
     };
 }

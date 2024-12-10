@@ -3,6 +3,9 @@
 
 using hayk10002::json_parser::lexer::Cursor;
 using hayk10002::json_parser::lexer::Position;
+using hayk10002::json_parser::lexer::CharParser;
+using hayk10002::json_parser::lexer::DigitParser;
+using hayk10002::json_parser::lexer::HexDigitParser;
 
 int main() {
 
@@ -30,6 +33,32 @@ int main() {
         assert(c.next() == std::nullopt);
         c.set_pos(66);
         assert(c.get_pos() == Position(66, 1, 8));
+    }
+
+    {
+        int index = 0;
+        std::function f = [&index](char x)
+        { 
+            return index < 4 && x == "true"[index++]; 
+        };
+        Cursor input{"true0fAlse"};
+        CharParser chp(f);
+        for (int i = 0; i < 4; i++) 
+        {
+            assert(chp.parse(input).value() == "true"[i]);
+        }
+
+        DigitParser dp;
+        assert(dp.parse(input).value() == 0);
+        assert(dp.parse(input).has_error());
+        assert(input.next() == 'f');
+
+        HexDigitParser hdp;
+        assert(hdp.parse(input).value() == 15);
+        assert(hdp.parse(input).value() == 10);
+        assert(hdp.parse(input).has_error());
+        assert(input.next() == 'l');
+
     }
 
     return 0;
