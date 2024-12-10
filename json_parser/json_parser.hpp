@@ -167,7 +167,7 @@ namespace hayk10002::json_parser::lexer
                 {
                     // error unexpected character, move cursor one place back, because in case of error parsers are expected to not change the input
                     input.move(-1);
-                    return itlib::unexpected(UnexpectedCharacter(input.get_pos(), m_expected_text));
+                    return itlib::unexpected(UnexpectedCharacter(input.get_pos(), *ch, m_expected_text));
                 }
             } 
             // no next character (end of input)

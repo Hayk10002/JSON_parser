@@ -42,11 +42,11 @@ namespace hayk10002
         {
             std::string m_message;
         public:
-            UnexpectedCharacter(const Position& pos, std::string_view expected_text = ""):
+            UnexpectedCharacter(const Position& pos, char found, std::string_view expected_text = ""):
                 m_message(
                         expected_text == "" ? 
-                        std::format("Unexpected character at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos) : 
-                        std::format("Unexpected character at line: {}, col: {}  (pos: {}). Expected {}.", pos.line, pos.col, pos.pos, expected_text)
+                        std::format("Unexpected character ('{}') at line: {}, col: {}  (pos: {}).", found, pos.line, pos.col, pos.pos) : 
+                        std::format("Unexpected character ('{}') at line: {}, col: {}  (pos: {}). Expected {}.", found, pos.line, pos.col, pos.pos, expected_text)
                 )
             {}
 
