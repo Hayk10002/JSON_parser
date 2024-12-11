@@ -35,6 +35,7 @@ namespace hayk10002
     {
         class UnexpectedCharacter : public std::exception
         {
+        protected:
             std::string m_message;
         public:
             char found;
@@ -50,6 +51,57 @@ namespace hayk10002
             {}
 
             virtual const char* what() const noexcept override { return m_message.c_str(); }
+        };
+
+        class UnexpectedControlCharacter : public UnexpectedCharacter
+        {
+        public:
+            inline static std::string_view control_character_names[32] = 
+            {
+                "NUL",	
+                "SOH",	
+                "STX",	
+                "ETX",	
+                "EOT",	
+                "ENQ",	
+                "ACK",	
+                "BEL",	
+                "BS",	
+                "HT",	
+                "LF",	
+                "VT",	
+                "FF",	
+                "CR",	
+                "SO",	
+                "SI",	
+                "DLE",
+                "DC1",
+                "DC2",
+                "DC3",
+                "DC4",
+                "NAK",
+                "SYN",
+                "ETB",
+                "CAN",
+                "EM",
+                "SUB",
+                "ESC",
+                "FS",
+                "GS",
+                "RS",
+                "US"
+            };
+
+            UnexpectedControlCharacter(const Position& pos, char found): UnexpectedCharacter(pos, found) 
+            {
+                if (0 <= found < 32)
+                {
+                    std::string_view name = control_character_names[found];
+                    const char escape[2] = {char('0' + (found > 15)), char((found > 25) ? ('a' + found - 26) : ('0' + found - 16))};
+
+                    m_message = std::format("Unexpected control character ({}) at line: {}, col: {}, (pos: {}). It must be escaped with \"\\u00{}\".", name, pos.line, pos.col, pos.pos, escape);
+                }
+            }
         };
 
         class UnexpectedEndOfInput : public std::exception
@@ -76,6 +128,23 @@ namespace hayk10002
             ExpectedAHexDigit(const Position& pos, char found): UnexpectedCharacter(pos, found, "a hex digit (from 0 to 9, a to f or A to F)") {}
         };
 
+        class InvalidEncoding : public std::exception
+        {
+            std::string m_message;
+            Position pos;
+        public:
+            InvalidEncoding(const Position& pos, std::string_view details = "", std::string_view encoding = "utf-8"):
+                pos(pos),
+                m_message(
+                        details == "" ? 
+                        std::format("Invalid {} at line: {}, col: {}  (pos: {}).", encoding, pos.line, pos.col, pos.pos) : 
+                        std::format("Invalid {} at line: {}, col: {}  (pos: {}). {}.", encoding, pos.line, pos.col, pos.pos, details)
+                )
+            {}
+
+            virtual const char* what() const noexcept override { return m_message.c_str(); }
+        };
+
         class ExpectedADigitOrASign : public UnexpectedCharacter
         {
         public:
@@ -92,6 +161,21 @@ namespace hayk10002
                 found(found),
                 pos(pos),
                 m_message(std::format("Invalid literal (\"{}\") at line: {}, col: {}  (pos: {}). Expected \"null\", \"true\" or \"false\".", found, pos.line, pos.col, pos.pos))
+            {}
+
+            virtual const char* what() const noexcept override { return m_message.c_str(); }
+        };
+
+        class InvalidEscape : public std::exception
+        {
+            std::string m_message;
+            Position pos;
+            std::string found;
+        public:
+            InvalidEscape(const Position& pos, std::string_view found):
+                found(found),
+                pos(pos),
+                m_message(std::format("Invalid escape (\"{}\") at line: {}, col: {}  (pos: {}). Allowed escapes are \"\\\"\", \"\\\\\", \"\\/\", \"\\b\", \"\\f\", \"\\n\", \"\\r\", \"\\t\", \"\\uhhhh\" where h is a hex digit (0 to 9, a to f or A to F).", found, pos.line, pos.col, pos.pos))
             {}
 
             virtual const char* what() const noexcept override { return m_message.c_str(); }
@@ -118,6 +202,19 @@ namespace hayk10002
             ExpectedANumber(const Position& pos):
                 pos(pos),
                 m_message(std::format("Expected a number at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos))
+            {}
+
+            virtual const char* what() const noexcept override { return m_message.c_str(); }
+        };
+
+        class ExpectedAString : public std::exception
+        {
+            std::string m_message;
+            Position pos;
+        public:
+            ExpectedAString(const Position& pos):
+                pos(pos),
+                m_message(std::format("Expected a string at line: {}, col: {}  (pos: {}) (strings start and end with the \" character).", pos.line, pos.col, pos.pos))
             {}
 
             virtual const char* what() const noexcept override { return m_message.c_str(); }

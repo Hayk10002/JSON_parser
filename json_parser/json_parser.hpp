@@ -266,6 +266,77 @@ namespace hayk10002::json_parser::lexer
         }
     };
 
+    /// @brief parses a utf-8 codepoint from input
+    class UTF8CodePointParser
+    {
+    public:
+        using InputType = Cursor;
+        using ReturnType = std::tuple<UTF8string, uint32_t>;
+        using ErrorType = ParserError<InvalidEncoding, UnexpectedEndOfInput>;
+
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
+        {
+            char ch;
+            // if input is empty
+            if (auto maybe_ch = input.peek_next(); !maybe_ch) 
+               return itlib::unexpected(UnexpectedEndOfInput{input.get_pos()});
+            else ch = *maybe_ch;
+
+            uint32_t codepoint = 0;
+            size_t numBytes = 0;
+
+            // Determine the number of bytes in the UTF-8 sequence
+            if ((ch & 0b10000000) == 0) {
+                // 1-byte sequence: 0xxxxxxx
+                codepoint = ch;
+                numBytes = 1;
+            } else if ((ch & 0b11100000) == 0b11000000) {
+                // 2-byte sequence: 110xxxxx 10xxxxxx
+                codepoint = ch & 0b00011111;
+                numBytes = 2;
+            } else if ((ch & 0b11110000) == 0b11100000) {
+                // 3-byte sequence: 1110xxxx 10xxxxxx 10xxxxxx
+                codepoint = ch & 0b00001111;
+                numBytes = 3;
+            } else if ((ch & 0b11111000) == 0b11110000) {
+                // 4-byte sequence: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+                codepoint = ch & 0b00000111;
+                numBytes = 4;
+            } else {
+                return itlib::unexpected(InvalidEncoding{input.get_pos(), "Invalid UTF-8 start byte"});
+            }
+
+            // Verify the continuation bytes
+            auto bytes = input.peek(numBytes);
+            if (bytes.size() < numBytes) {
+                return itlib::unexpected(InvalidEncoding{input.get_pos(), "Input string is too short for a valid UTF-8 codepoint"});
+            }
+
+            for (size_t i = 1; i < numBytes; ++i) {
+                if ((bytes[i] & 0b11000000) != 0b10000000) {
+                    return itlib::unexpected(InvalidEncoding{input.get_pos(), "Invalid UTF-8 continuation byte"});
+                }
+                codepoint = (codepoint << 6) | (bytes[i] & 0b00111111);
+            }
+
+            // Detect overlong encoding
+            if ((numBytes == 2 && codepoint <= 0x7F) ||
+                (numBytes == 3 && codepoint <= 0x7FF) ||
+                (numBytes == 4 && codepoint <= 0xFFFF)) {
+                return itlib::unexpected(InvalidEncoding{input.get_pos(), "Overlong UTF-8 encoding"});
+            }
+
+            // Validate codepoint range (optional, depending on your requirements)
+            if (codepoint > 0x10FFFF || (codepoint >= 0xD800 && codepoint <= 0xDFFF)) {
+                return itlib::unexpected(InvalidEncoding{input.get_pos(), "Invalid UTF-8 codepoint"});
+            }
+
+            input.move(numBytes);
+            return std::tuple{UTF8string(std::string(bytes)), codepoint};
+        }
+
+    };
+
     /// @brief parses a literal ('null', 'true' or 'false')
     class TokenLiteralLexer
     {
@@ -350,8 +421,6 @@ namespace hayk10002::json_parser::lexer
         using ReturnType = TokenNumber;
         using ErrorType = ParserError<ExpectedANumber, ExpectedADigit, ExpectedADigitOrASign, UnexpectedEndOfInput>;
 
-
-    public:
         itlib::expected<ReturnType, ErrorType> parse(InputType& input)
         {
             Position start_pos = input.get_pos();
@@ -471,5 +540,200 @@ namespace hayk10002::json_parser::lexer
             if (is_int) return TokenNumber{json_traits<Json>::IntType{int_value}};
             return TokenNumber{json_traits<Json>::FloatType{float_value}};
         }
+    };
+
+    class TokenStringLexer
+    {
+    public:
+        using InputType = Cursor;
+        using ReturnType = TokenString;
+        using ErrorType = ParserError<ExpectedAString, InvalidEncoding, UnexpectedControlCharacter, InvalidEscape, UnexpectedEndOfInput>;
+
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
+        {
+            if (auto ch = input.peek_next(); !ch) 
+                return itlib::unexpected(UnexpectedEndOfInput{input.get_pos()});
+            else if (*ch != '\"')
+                return itlib::unexpected(ExpectedAString{input.get_pos()});
+
+            Position start_pos = input.get_pos();
+            
+            input.next();
+
+            std::string result = "";
+            UTF8CodePointParser utf8_p{};
+            CharParser escape_char_p([](char ch)
+                {
+                    return
+                        ch == '\\' ||
+                        ch == '\"' ||
+                        ch == '/' ||
+                        ch == 'b' ||
+                        ch == 'f' ||
+                        ch == 'n' ||
+                        ch == 'r' ||
+                        ch == 't' ||
+                        ch == 'u';
+                });
+
+            while(true)
+            {
+                Position curr_pos = input.get_pos();
+                auto res = utf8_p.parse(input);
+                if (res.has_error())
+                {
+                    input.set_pos(start_pos);
+                    return itlib::unexpected(res.error());
+                }
+                auto [utf8_str, codepoint] = res.value();
+
+                if (codepoint == '\"') break;
+
+                if (codepoint < 32)
+                {
+                    input.set_pos(start_pos);
+                    return itlib::unexpected(UnexpectedControlCharacter{curr_pos, char(codepoint)});
+                }
+
+                if (codepoint != '\\')
+                {
+                    result += utf8_str.utf8_sstring();
+                    continue;
+                }
+
+                auto esc_res = escape_char_p.parse(input);
+                if (esc_res.has_error())
+                { 
+                    input.set_pos(start_pos);
+                    auto err = esc_res.error();
+                    if (std::holds_alternative<UnexpectedEndOfInput>(err.inner)) return itlib::unexpected(err);
+                    return itlib::unexpected(InvalidEscape(curr_pos, std::string{'\\', std::get<UnexpectedCharacter>(err.inner).found}));
+                }
+
+                char esc_ch = esc_res.value();
+                
+                switch (esc_ch)
+                {
+                case '\\':
+                    result += '\\';
+                    break;
+                case '\"':
+                    result += '\"';
+                    break;
+                case '/':
+                    result += '/';
+                    break;
+                case 'b':
+                    result += '\b';
+                    break;
+                case 'f':
+                    result += '\f';
+                    break;
+                case 'n':
+                    result += '\n';
+                    break;
+                case 'r':
+                    result += '\r';
+                    break;
+                case 't':
+                    result += '\t';
+                    break;
+                case 'u':
+                    HexDigitParser hp{};
+                    auto res = parser_types::Seq{hp, hp, hp, hp}.parse(input);
+                    if (res.has_error())
+                    {
+                        input.move(-2);
+                        std::string_view esc_str = input.peek(6);
+                        input.set_pos(start_pos);
+                        return itlib::unexpected(InvalidEscape(curr_pos, esc_str));
+                    }
+                    auto [a, b, c, d] = res.value();
+                    uint16_t val1 = a << 12 + b << 8 + c << 4 + d;
+
+                    auto is_low_surrogate  = [](uint16_t val) { return (val & 0b1111110000000000) == 0b1101110000000000; };
+                    auto is_high_surrogate = [](uint16_t val) { return (val & 0b1111110000000000) == 0b1101100000000000; };
+
+                    auto utf16_to_utf8 = [](uint16_t val1, uint16_t val2)
+                    {
+                        uint32_t codepoint;
+                        if (val2 == 0) {
+                            // Single UTF-16 unit
+                            codepoint = val1;
+                        } else {
+                            // Surrogate pair: high surrogate in `val1`, low surrogate in `val2`
+                            codepoint = 0x10000 + (((val1 & 0x03FF) << 10) | (val2 & 0x03FF));
+                        }
+
+                        std::string utf8;
+                        if (codepoint <= 0x7F) {
+                            // 1-byte UTF-8
+                            utf8.push_back(static_cast<char>(codepoint));
+                        } else if (codepoint <= 0x7FF) {
+                            // 2-byte UTF-8
+                            utf8.push_back(static_cast<char>(0xC0 | (codepoint >> 6)));
+                            utf8.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+                        } else if (codepoint <= 0xFFFF) {
+                            // 3-byte UTF-8
+                            utf8.push_back(static_cast<char>(0xE0 | (codepoint >> 12)));
+                            utf8.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+                            utf8.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+                        } else if (codepoint <= 0x10FFFF) {
+                            // 4-byte UTF-8
+                            utf8.push_back(static_cast<char>(0xF0 | (codepoint >> 18)));
+                            utf8.push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F)));
+                            utf8.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+                            utf8.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+                        }
+                        return utf8;
+                    };
+
+                    if (!is_low_surrogate(val1) && !is_high_surrogate(val1))
+                    {
+                        result += utf16_to_utf8(val1, 0);
+                        break;
+                    }
+
+                    if (is_low_surrogate(val1))
+                    {
+                        input.set_pos(start_pos);
+                        return itlib::unexpected(InvalidEncoding(curr_pos, "Low surrogate not after a high surrogate", "utf-16"));
+                    }
+
+                    if (input.peek(2) != "\\u")
+                    {
+                        input.set_pos(start_pos);
+                        return itlib::unexpected(InvalidEncoding(curr_pos, "High surrogate not before a low surrogate", "utf-16"));
+                    }
+
+                    input.move(2);
+
+                    res = parser_types::Seq{hp, hp, hp, hp}.parse(input);
+                    if (res.has_error())
+                    {
+                        input.move(-2);
+                        curr_pos = input.get_pos();
+                        std::string_view esc_str = input.peek(6);
+                        input.set_pos(start_pos);
+                        return itlib::unexpected(InvalidEscape(curr_pos, esc_str));
+                    }
+
+                    auto [e, f, g, h] = res.value();
+                    uint16_t val2 = e << 12 + f << 8 + g << 4 + h;
+
+                    if (!is_low_surrogate(val2))
+                    {
+                        input.set_pos(start_pos);
+                        return itlib::unexpected(InvalidEncoding(curr_pos, "High surrogate not before a low surrogate", "utf-16"));
+                    }
+
+                    result += utf16_to_utf8(val1, val2);
+                    break;
+                }
+            }
+
+            return TokenString{json_traits<Json>::StringType{result}};
+        }
+
     };
 }
