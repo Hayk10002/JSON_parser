@@ -122,6 +122,23 @@ namespace hayk10002::json_parser::lexer
             return res_span;
         }
 
+        /// @brief returns the part that would be selected if the cursor moved by d
+        ///
+        /// "hel_lo world" -> peek(3) -> returns "lo "
+        ///
+        /// "hello wo_rld" -> peek(-5) -> returns "lo wo"
+        ///
+        /// if moving would place cursor out of bounds, it returns up to start or end
+        /// @param d how much to peek and in what direction
+        std::string_view peek(int d)
+        {
+            // if moving d will go out of bounds, recalculate d
+            if (int(m_pos) + d < 0) d = -m_pos;
+            else if (m_pos + d >= m_view.size()) d = m_view.size() - m_pos;
+
+            return (d >= 0) ? m_view.substr(m_pos, d) : m_view.substr(m_pos + d, -d);
+        }
+
 
         Position get_pos() { return m_pos; }
         void set_pos(size_t pos) { move(pos - m_pos); }
@@ -129,9 +146,19 @@ namespace hayk10002::json_parser::lexer
 
         /// @brief get next character
         /// @return return std::nullopt if at the end, or the next character
+        /// @note this moves the cursor
         std::optional<char> next()
         {
             if (auto v = move(1); !v.empty()) return v[0];
+            else return std::nullopt;
+        }
+
+        /// @brief get next character without moving the cursor
+        /// @return return std::nullopt if at the end, or the next character
+        /// @note this doesn't move the cursor
+        std::optional<char> peek_next()
+        {
+            if (auto v = peek(1); !v.empty()) return v[0];
             else return std::nullopt;
         }
 
@@ -178,12 +205,7 @@ namespace hayk10002::json_parser::lexer
                 }
             } 
             // no next character (end of input)
-            else 
-            {
-                // error unexpected end of input, move cursor one place back, because in case of error parsers are expected to not change the input
-                input.move(-1);
-                return itlib::unexpected(UnexpectedEndOfInput(input.get_pos()));
-            }
+            else return itlib::unexpected(UnexpectedEndOfInput(input.get_pos()));
         }
     };
 
@@ -275,7 +297,7 @@ namespace hayk10002::json_parser::lexer
             // if reached end of input but read nothing
             if (end_of_input && val == "") return itlib::unexpected(UnexpectedEndOfInput(start_pos));
 
-            // if not reached end of input, then one character was read after the literals end, so unread it
+            // if not reached end of input, then one character was read after the literal's end, so unread it
             if (!end_of_input) input.move(-1);
 
             if (val == "") return itlib::unexpected(ExpectedALiteral(start_pos));
@@ -337,14 +359,11 @@ namespace hayk10002::json_parser::lexer
             DigitParser digit_parser;
             parser_types::Nothing<InputType> nothing_parser;
             parser_types::Cycle digits_parser{digit_parser};
-            if (auto ch = input.next(); !ch || (*ch != '-' && !std::isdigit(*ch))) 
+            if (auto ch = input.peek_next(); !ch || (*ch != '-' && !std::isdigit(*ch))) 
             {
                 if (!ch) return itlib::unexpected(UnexpectedEndOfInput{start_pos});
-                input.set_pos(start_pos);
                 return itlib::unexpected(ExpectedANumber{start_pos});
             };
-
-            input.set_pos(start_pos);
 
             bool is_negative = parser_types::Or{neg_sign_parser, nothing_parser}.parse(input).value().index() == 0; // true for negative
             int sign = (!is_negative - is_negative); // 0 -> (1 - 0) = 1, 1 -> (0 - 1) = -1
@@ -411,7 +430,10 @@ namespace hayk10002::json_parser::lexer
             auto res2 = exponent_parser.parse(input);
             if (res2.has_error() && res2.error().index() == 2)
             {
+                auto err = std::get<2>(res2.error());
                 input.set_pos(start_pos);
+                if (std::get<1>(exponent_parser.get_info())->index() == 2 && std::holds_alternative<ExpectedADigit>(err.inner)) 
+                    return itlib::unexpected(ExpectedADigitOrASign(std::get<ExpectedADigit>(err.inner).pos, std::get<ExpectedADigit>(err.inner).found));
                 return itlib::unexpected(std::get<2>(res2.error()));
             }
             if (res2.has_value())
