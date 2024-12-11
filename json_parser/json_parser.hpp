@@ -186,17 +186,22 @@ namespace hayk10002::json_parser::lexer
     public:
         using InputType = Cursor;
         using ReturnType = int;
-        using ErrorType = ParserError<UnexpectedCharacter, UnexpectedEndOfInput>;
+        using ErrorType = ParserError<ExpectedADigit, UnexpectedEndOfInput>;
 
     private:
         CharParser m_chp;
 
     public:
-        DigitParser(): m_chp([](char ch) { return ch >= '0' && ch <= '9'; }, "a digit (from 0 to 9)"){}
+        DigitParser(): m_chp([](char ch) { return ch >= '0' && ch <= '9'; }){}
         itlib::expected<ReturnType, ErrorType> parse(InputType& input)
         {
             auto res = m_chp.parse(input);
-            if (res.has_error()) return itlib::unexpected(res.error());
+            if (res.has_error())
+            { 
+                auto err = res.error();
+                if (std::holds_alternative<UnexpectedEndOfInput>(err.inner)) return itlib::unexpected(err);
+                return itlib::unexpected(ExpectedADigit(std::get<UnexpectedCharacter>(err.inner).pos, std::get<UnexpectedCharacter>(err.inner).found));
+            }
             return res.value() - '0';
         }
     };
@@ -207,17 +212,22 @@ namespace hayk10002::json_parser::lexer
     public:
         using InputType = Cursor;
         using ReturnType = int;
-        using ErrorType = ParserError<UnexpectedCharacter, UnexpectedEndOfInput>;
+        using ErrorType = ParserError<ExpectedAHexDigit, UnexpectedEndOfInput>;
 
     private:
         CharParser m_chp;
 
     public:
-        HexDigitParser(): m_chp([](char ch) { return ch >= '0' && ch <= '9' || ch >= 'A' && ch <= 'F' || ch >= 'a' && ch <= 'f'; }, "a hex digit (from 0 to 9, a to f or A to F)"){}
+        HexDigitParser(): m_chp([](char ch) { return ch >= '0' && ch <= '9' || ch >= 'A' && ch <= 'F' || ch >= 'a' && ch <= 'f'; }){}
         itlib::expected<ReturnType, ErrorType> parse(InputType& input)
         {
             auto res = m_chp.parse(input);
-            if (res.has_error()) return itlib::unexpected(res.error());
+            if (res.has_error())
+            { 
+                auto err = res.error();
+                if (std::holds_alternative<UnexpectedEndOfInput>(err.inner)) return itlib::unexpected(err);
+                return itlib::unexpected(ExpectedAHexDigit(std::get<UnexpectedCharacter>(err.inner).pos, std::get<UnexpectedCharacter>(err.inner).found));
+            }
             char ch = res.value();
             if (ch >= '0' && ch <= '9') return ch - '0';
             if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
@@ -233,7 +243,7 @@ namespace hayk10002::json_parser::lexer
     public:
         using InputType = Cursor;
         using ReturnType = TokenLiteral;
-        using ErrorType = ParserError<InvalidLiteral, UnexpectedEndOfInput>;
+        using ErrorType = ParserError<ExpectedALiteral, InvalidLiteral, UnexpectedEndOfInput>;
 
         itlib::expected<ReturnType, ErrorType> parse(InputType& input)
         {
@@ -260,6 +270,8 @@ namespace hayk10002::json_parser::lexer
 
             // if not reached end of input, then one character was read after the literals end, so unread it
             if (!end_of_input) input.move(-1);
+
+            if (val == "") return itlib::unexpected(ExpectedALiteral(start_pos));
 
             // check for accepted literals
             if (val == "true") return TokenLiteral{true};
