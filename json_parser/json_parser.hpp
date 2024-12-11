@@ -312,7 +312,7 @@ namespace hayk10002::json_parser::lexer
                     ch == TokenSyntax::ARRAY_END ||
                     ch == TokenSyntax::OBJECT_START ||
                     ch == TokenSyntax::OBJECT_END; 
-            }, "a syntax character (',', ':', '[', ']', '{' or '}'"){}
+            }, "a syntax character (',', ':', '[', ']', '{' or '}')"){}
         itlib::expected<ReturnType, ErrorType> parse(InputType& input)
         {
             auto res = m_chp.parse(input);
@@ -337,12 +337,14 @@ namespace hayk10002::json_parser::lexer
             DigitParser digit_parser;
             parser_types::Nothing<InputType> nothing_parser;
             parser_types::Cycle digits_parser{digit_parser};
-            if (auto ch = input.next(); !ch || *ch != '-' || !std::isdigit(*ch)) 
+            if (auto ch = input.next(); !ch || (*ch != '-' && !std::isdigit(*ch))) 
             {
                 if (!ch) return itlib::unexpected(UnexpectedEndOfInput{start_pos});
                 input.set_pos(start_pos);
                 return itlib::unexpected(ExpectedANumber{start_pos});
             };
+
+            input.set_pos(start_pos);
 
             bool is_negative = parser_types::Or{neg_sign_parser, nothing_parser}.parse(input).value().index() == 0; // true for negative
             int sign = (!is_negative - is_negative); // 0 -> (1 - 0) = 1, 1 -> (0 - 1) = -1
@@ -355,26 +357,30 @@ namespace hayk10002::json_parser::lexer
             }
 
             int first_digit = res.value();
-            if (first_digit == 0) return TokenNumber{json_traits<Json>::IntType{0}};
-            
-            json_traits<Json>::IntType int_value = first_digit * sign;
-            json_traits<Json>::FloatType float_value = int_value;
-            bool is_int = true;
-            const json_traits<Json>::IntType max = std::numeric_limits<json_traits<Json>::IntType>::max();
-            const json_traits<Json>::IntType min = std::numeric_limits<json_traits<Json>::IntType>::min();
-            for (int digit: digits_parser.parse(input).value())
-            {
-                float_value *= 10;
-                float_value += digit * sign;
-                if (is_int)
-                {
-                    // if overflow after multiplying with 10, switch to float
-                    if (int_value > max / 10 || int_value < min / 10) is_int = false;
-                    else int_value *= 10;
 
-                    // if overflow after adding next digit, switch to float
-                    if (sign == 1 && int_value > max - digit || sign == -1 && int_value < min + digit) is_int = false;
-                    else int_value += digit * sign;
+            json_traits<Json>::FloatType float_value = first_digit; float_value *= sign;
+            json_traits<Json>::IntType int_value = first_digit * sign;
+            bool is_int = true;
+
+            if (first_digit != 0) 
+            {
+                const json_traits<Json>::IntType max = std::numeric_limits<json_traits<Json>::IntType>::max();
+                const json_traits<Json>::IntType min = std::numeric_limits<json_traits<Json>::IntType>::min();
+                auto digits = digits_parser.parse(input).value();
+                for (int digit: digits)
+                {
+                    float_value *= 10;
+                    float_value += digit * sign;
+                    if (is_int)
+                    {
+                        // if overflow after multiplying with 10, switch to float
+                        if (int_value > max / 10 || int_value < min / 10) is_int = false;
+                        else int_value *= 10;
+
+                        // if overflow after adding next digit, switch to float
+                        if (sign == 1 && int_value > max - digit || sign == -1 && int_value < min + digit) is_int = false;
+                        else int_value += digit * sign;
+                    }
                 }
             }
 
@@ -406,13 +412,14 @@ namespace hayk10002::json_parser::lexer
             if (res2.has_error() && res2.error().index() == 2)
             {
                 input.set_pos(start_pos);
-                return itlib::unexpected(std::get<2>(res1.error()));
+                return itlib::unexpected(std::get<2>(res2.error()));
             }
             if (res2.has_value())
             {
                 is_int = false;
                 auto [_dot, exp_sign_var, first_digit, digits] = res2.value();
-                bool exp_sign = exp_sign_var.index() == 0; // true for negative
+                int exp_sign = exp_sign_var.index() == 0; // true for negative
+                exp_sign = !exp_sign - exp_sign; // -1 or 1
                 digits.insert(digits.begin(), first_digit);
 
                 int exp = 0;

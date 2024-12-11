@@ -2,12 +2,7 @@
 #include <cassert>
 #include <iostream>
 
-using hayk10002::json_parser::lexer::Cursor;
-using hayk10002::json_parser::lexer::Position;
-using hayk10002::json_parser::lexer::CharParser;
-using hayk10002::json_parser::lexer::DigitParser;
-using hayk10002::json_parser::lexer::HexDigitParser;
-using hayk10002::json_parser::lexer::TokenLiteralLexer;
+using namespace hayk10002::json_parser::lexer;
 
 int main() {
 
@@ -74,13 +69,74 @@ int main() {
         assert(std::get<bool>(ll.parse(input).value().value) == false);
         input.next();
         auto res = ll.parse(input);
-        assert(res.has_error()); std::cout << res.error().what();
+        assert(res.has_error()); std::cout << res.error().what() << std::endl;
         input.move(9);
         assert(ll.parse(input).value().value.index() == 0);
         input.next();
-        ll.parse(input);
-        assert(res.has_error()); std::cout << res.error().what();
+        res = ll.parse(input);
+        assert(res.has_error()); std::cout << res.error().what() << std::endl;
         input.move(4);
+    }
+
+    // test TokenSyntaxLexer
+    {
+        Cursor input{"{[:,]}./"};
+        TokenSyntaxLexer ll;
+        assert(ll.parse(input).value().type == TokenSyntax::OBJECT_START);
+        assert(ll.parse(input).value().type == TokenSyntax::ARRAY_START);
+        assert(ll.parse(input).value().type == TokenSyntax::SEMICOLON);
+        assert(ll.parse(input).value().type == TokenSyntax::COMMA);
+        assert(ll.parse(input).value().type == TokenSyntax::ARRAY_END);
+        assert(ll.parse(input).value().type == TokenSyntax::OBJECT_END);
+        auto res = ll.parse(input);
+        assert(res.has_error()); std::cout << res.error().what() << std::endl;
+        input.next();
+        res = ll.parse(input);
+        assert(res.has_error()); std::cout << res.error().what() << std::endl;
+        input.next();
+        input.next();
+        assert(input.next() == std::nullopt);
+    }
+
+    // test TokenNumberLexer
+    {
+        Cursor good_input{
+                "1\n"
+                "2\n"
+                "10\n"
+                "-10\n"
+                "-0\n"
+                "0\n"
+                "1.0\n"
+                "2.00\n"
+                "-4.00\n"
+                "9223372036854775807\n"
+                "-9223372036854775808\n"
+                "9223372036854775808\n"
+                "-9223372036854775809\n"
+                "24e10\n"
+                "24.3550E-4\n"
+                "0.123e+234\n"
+                "1e1000\n"
+                "1e-1000"};
+
+        TokenNumberLexer num_l{};
+        CharParser new_line_p{'\n'};
+        auto tokens = hayk10002::parser_types::Cycle{num_l, new_line_p}.parse(good_input).value();
+        for (const auto& token: tokens)
+        {
+            std::cout << (token.value.index() ? "double" : "int64") << ' ';
+            std::visit([](const auto& arg){ std::cout << arg; }, token.value);
+            std::cout << std::endl;
+        }
+        auto bad_inputs = { "1ea", "", "a", "-4. ", "0.3e- ", "234.e3" }; // "02" will not be an error, since a 0 will be parsed successfully
+        for (auto bad_input: bad_inputs)
+        {
+            Cursor input{bad_input};
+            auto err = num_l.parse(input);
+            assert(err.has_error());
+            std::cout << err.error().what() << std::endl;
+        }
     }
 
     return 0;
