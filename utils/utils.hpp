@@ -1,6 +1,7 @@
 #pragma once
 
 #include <tuple>
+#include <variant>
 
 namespace hayk10002
 {
@@ -69,4 +70,24 @@ namespace hayk10002
 
     template<typename FVar, typename SVar>
     using param_pack_sum_t = typename param_pack_sum<FVar, SVar>::type;
+
+    template<typename ... newTypes, typename ... oldTypes>
+    auto cast_variant(const std::variant<oldTypes...>& var) 
+    {
+        return std::visit([]<typename T>(T && arg) -> std::variant<newTypes...> 
+        {
+            if constexpr (std::disjunction_v<std::is_same<std::decay_t<T>, newTypes>...>) return arg;
+            else throw std::bad_variant_access();
+        }, var);
+    }
+
+    template<typename ... newTypes, typename ... oldTypes>
+    auto cast_variant(std::variant<oldTypes...>&& var) 
+    {
+        return std::visit([]<typename T>(T && arg) -> std::variant<newTypes...> 
+        {
+            if constexpr (std::disjunction_v<std::is_same<std::decay_t<T>, newTypes>...>) return std::move(arg);
+            else throw std::bad_variant_access();
+        }, var);
+    }
 }

@@ -27,10 +27,7 @@ namespace hayk10002
         }
 
         template<std::derived_from<std::exception> ...ETs>
-        ParserError(ParserError<ETs...>&& other)
-        {
-            std::visit([this](auto&& arg){ inner = std::move(arg); }, std::move(other));
-        }
+        ParserError(ParserError<ETs...>&& other): inner(cast_variant<ErrorTypes...>(std::move(other.inner))) {}
 
         template<std::derived_from<std::exception> ET>
         ParserError(ET&& other): inner(std::forward<ET>(other)) {}
