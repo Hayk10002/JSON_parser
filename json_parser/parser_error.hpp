@@ -7,6 +7,7 @@
 #include <format>
 
 #include "position.hpp"
+#include "utils.hpp"
 
 namespace hayk10002
 {
@@ -75,6 +76,12 @@ namespace hayk10002
             ExpectedAHexDigit(const Position& pos, char found): UnexpectedCharacter(pos, found, "a hex digit (from 0 to 9, a to f or A to F)") {}
         };
 
+        class ExpectedADigitOrASign : public UnexpectedCharacter
+        {
+        public:
+            ExpectedADigitOrASign(const Position& pos, char found): UnexpectedCharacter(pos, found, "a digit (from 0 to 9) or a sign (- or +)") {}
+        };
+
         class InvalidLiteral : public std::exception
         {
             std::string m_message;
@@ -103,5 +110,17 @@ namespace hayk10002
             virtual const char* what() const noexcept override { return m_message.c_str(); }
         };
 
+        class ExpectedANumber : public std::exception
+        {
+            std::string m_message;
+            Position pos;
+        public:
+            ExpectedANumber(const Position& pos):
+                pos(pos),
+                m_message(std::format("Expected a number at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos))
+            {}
+
+            virtual const char* what() const noexcept override { return m_message.c_str(); }
+        };
     }
 }

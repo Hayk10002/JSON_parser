@@ -5,6 +5,8 @@
 #include <format>
 #include <optional>
 #include <functional>
+#include <limits>
+#include <cmath>
 
 #include "position.hpp"
 #include "parser_error.hpp"
@@ -25,14 +27,14 @@ namespace hayk10002::json_parser::lexer
     /// @brief token for syntax related characters
     struct TokenSyntax
     { 
-        enum : char
+        enum Type: char
         {
-            COMMA,
-            SEMICOLON,
-            ARRAY_START,
-            ARRAY_END,
-            OBJECT_START,
-            OBJECT_END,
+            COMMA = ',',
+            SEMICOLON = ':',
+            ARRAY_START = '[',
+            ARRAY_END = ']',
+            OBJECT_START = '{',
+            OBJECT_END = '}',
         } type;
     };
 
@@ -152,6 +154,11 @@ namespace hayk10002::json_parser::lexer
         /// @param expected_text optional text to print if the character is not accepte by the function (error message will say  "Unexpected character at {some position}. Expected {expected_text}.")
         /// @note if expected_text is empty, the "Expected {expected_text}" part will not appear in the error message at all
         CharParser(std::function<bool(char)> accept_char, std::string_view expected_text = ""): m_accept(accept_char), m_expected_text(expected_text) {}
+
+        /// @param accepted_char character to accept
+        /// @param expected_text optional text to print if the character is not accepte by the function (error message will say  "Unexpected character at {some position}. Expected {expected_text}.")
+        /// @note if expected_text is empty, the "Expected {expected_text}" part will not appear in the error message at all
+        CharParser(char accepted_char, std::string_view expected_text = ""): CharParser([accepted_char](char ch){ return ch == accepted_char; }, expected_text) {}
 
         itlib::expected<ReturnType, ErrorType> parse(InputType& input)
         {
@@ -282,7 +289,158 @@ namespace hayk10002::json_parser::lexer
             input.set_pos(start_pos);
 
             return itlib::unexpected(InvalidLiteral(start_pos, val));
+        }
+    };
 
+    class TokenSyntaxLexer
+    {
+    public:
+        using InputType = Cursor;
+        using ReturnType = TokenSyntax;
+        using ErrorType = ParserError<UnexpectedCharacter, UnexpectedEndOfInput>;
+
+    private:
+        CharParser m_chp;
+
+    public:
+        TokenSyntaxLexer(): m_chp([](char ch) 
+            { 
+                return 
+                    ch == TokenSyntax::COMMA ||
+                    ch == TokenSyntax::SEMICOLON ||
+                    ch == TokenSyntax::ARRAY_START ||
+                    ch == TokenSyntax::ARRAY_END ||
+                    ch == TokenSyntax::OBJECT_START ||
+                    ch == TokenSyntax::OBJECT_END; 
+            }, "a syntax character (',', ':', '[', ']', '{' or '}'"){}
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
+        {
+            auto res = m_chp.parse(input);
+            if (res.has_error()) return itlib::unexpected(res.error());
+            return TokenSyntax{TokenSyntax::Type{res.value()}};
+        }
+    };
+
+    class TokenNumberLexer
+    {
+    public:
+        using InputType = Cursor;
+        using ReturnType = TokenNumber;
+        using ErrorType = ParserError<ExpectedANumber, ExpectedADigit, ExpectedADigitOrASign, UnexpectedEndOfInput>;
+
+
+    public:
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
+        {
+            Position start_pos = input.get_pos();
+            CharParser neg_sign_parser('-'), pos_sign_parser('+'), dot_parser('.'), e_parser([](char ch) { return ch == 'e' || ch == 'E'; });
+            DigitParser digit_parser;
+            parser_types::Nothing<InputType> nothing_parser;
+            parser_types::Cycle digits_parser{digit_parser};
+            if (auto ch = input.next(); !ch || *ch != '-' || !std::isdigit(*ch)) 
+            {
+                if (!ch) return itlib::unexpected(UnexpectedEndOfInput{start_pos});
+                input.set_pos(start_pos);
+                return itlib::unexpected(ExpectedANumber{start_pos});
+            };
+
+            bool is_negative = parser_types::Or{neg_sign_parser, nothing_parser}.parse(input).value().index() == 0; // true for negative
+            int sign = (!is_negative - is_negative); // 0 -> (1 - 0) = 1, 1 -> (0 - 1) = -1
+
+            auto res = digit_parser.parse(input);
+            if (res.has_error()) 
+            {
+                input.set_pos(start_pos);
+                return itlib::unexpected(res.error());
+            }
+
+            int first_digit = res.value();
+            if (first_digit == 0) return TokenNumber{json_traits<Json>::IntType{0}};
+            
+            json_traits<Json>::IntType int_value = first_digit * sign;
+            json_traits<Json>::FloatType float_value = int_value;
+            bool is_int = true;
+            const json_traits<Json>::IntType max = std::numeric_limits<json_traits<Json>::IntType>::max();
+            const json_traits<Json>::IntType min = std::numeric_limits<json_traits<Json>::IntType>::min();
+            for (int digit: digits_parser.parse(input).value())
+            {
+                float_value *= 10;
+                float_value += digit * sign;
+                if (is_int)
+                {
+                    // if overflow after multiplying with 10, switch to float
+                    if (int_value > max / 10 || int_value < min / 10) is_int = false;
+                    else int_value *= 10;
+
+                    // if overflow after adding next digit, switch to float
+                    if (sign == 1 && int_value > max - digit || sign == -1 && int_value < min + digit) is_int = false;
+                    else int_value += digit * sign;
+                }
+            }
+
+            auto fraction_parser = parser_types::Seq{dot_parser, digit_parser, digits_parser};
+            auto sign_parser = parser_types::Or{neg_sign_parser, pos_sign_parser, nothing_parser};
+            auto exponent_parser = parser_types::Seq{e_parser, sign_parser, digit_parser, digits_parser};
+
+            auto res1 = fraction_parser.parse(input);
+            if (res1.has_error() && res1.error().index() == 1)
+            {
+                input.set_pos(start_pos);
+                return itlib::unexpected(std::get<1>(res1.error()));
+            }
+            if (res1.has_value())
+            {
+                is_int = false;
+                auto [_dot, first_digit, digits] = res1.value();
+                digits.insert(digits.begin(), first_digit);
+
+                json_traits<Json>::FloatType pow_of_10 = 0.1;
+                for (int digit: digits)
+                {
+                    float_value += sign * pow_of_10 * digit;
+                    pow_of_10 /= 10;
+                }
+            }
+
+            auto res2 = exponent_parser.parse(input);
+            if (res2.has_error() && res2.error().index() == 2)
+            {
+                input.set_pos(start_pos);
+                return itlib::unexpected(std::get<2>(res1.error()));
+            }
+            if (res2.has_value())
+            {
+                is_int = false;
+                auto [_dot, exp_sign_var, first_digit, digits] = res2.value();
+                bool exp_sign = exp_sign_var.index() == 0; // true for negative
+                digits.insert(digits.begin(), first_digit);
+
+                int exp = 0;
+                bool exp_out_of_limits = false;
+                for (int digit: digits)
+                {
+                    exp *= 10;
+                    exp += exp_sign * digit;
+
+                    if (exp > std::numeric_limits<json_traits<Json>::FloatType>::max_exponent10 * 2)
+                    {
+                        float_value = std::numeric_limits<json_traits<Json>::FloatType>::infinity() * sign;
+                        exp_out_of_limits = true;
+                        break;
+                    }
+                    else if (exp < std::numeric_limits<json_traits<Json>::FloatType>::min_exponent10 * 2)
+                    {
+                        float_value = 0 * sign;
+                        exp_out_of_limits = true;
+                        break;
+                    }
+                }
+
+                if (!exp_out_of_limits) float_value *= std::pow(json_traits<Json>::FloatType{10}, exp);
+            }
+
+            if (is_int) return TokenNumber{json_traits<Json>::IntType{int_value}};
+            return TokenNumber{json_traits<Json>::FloatType{float_value}};
         }
     };
 }
