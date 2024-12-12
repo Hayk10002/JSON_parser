@@ -237,12 +237,12 @@ namespace hayk10002::parser_types
         using ErrorType = NoError;
 
         // Information about what failed
-        using InfoType = std::optional<std::variant<typename MainType::ErrorType, typename SeparatorType::ErrorType>>;
+        using InfoType = std::variant<typename MainType::ErrorType, typename SeparatorType::ErrorType>;
 
         Cycle(MainType& main_parser, SeparatorType& separator_parser = Nothing<InputType>::parser) : m_main_parser{main_parser}, m_separator_parser{separator_parser} {}
 
     private:
-        InfoType m_info{};
+        std::optional<InfoType> m_info{};
         MainType& m_main_parser;
         SeparatorType& m_separator_parser;
 
@@ -255,7 +255,7 @@ namespace hayk10002::parser_types
             auto res = m_main_parser.parse(input);
             if(res.has_error())
             {
-                m_info = std::variant<typename MainType::ErrorType, typename SeparatorType::ErrorType>{std::in_place_index_t<0>{}, std::move(res).error()};
+                m_info = InfoType{std::in_place_index_t<0>{}, std::move(res).error()};
                 return return_val;
             }
             else return_val.emplace_back(std::move(res).value());
@@ -266,7 +266,7 @@ namespace hayk10002::parser_types
                 auto sep_res = m_separator_parser.parse(input);
                 if(sep_res.has_error())
                 {
-                    m_info = std::variant<typename MainType::ErrorType, typename SeparatorType::ErrorType>{std::in_place_index_t<1>{}, std::move(sep_res).error()};
+                    m_info = InfoType{std::in_place_index_t<1>{}, std::move(sep_res).error()};
                     return return_val;
                 }
 
@@ -274,7 +274,7 @@ namespace hayk10002::parser_types
                 auto val_res = m_main_parser.parse(input);
                 if(val_res.has_error())
                 {
-                    m_info = std::variant<typename MainType::ErrorType, typename SeparatorType::ErrorType>{std::in_place_index_t<0>{}, std::move(val_res).error()};
+                    m_info = InfoType{std::in_place_index_t<0>{}, std::move(val_res).error()};
                     return return_val;
                 }
                 else return_val.emplace_back(std::move(val_res).value());   
@@ -285,7 +285,7 @@ namespace hayk10002::parser_types
         }
         
         // Returns additional info about the last parse call
-        const InfoType& get_info() { return m_info; }
+        const InfoType& get_info() { return *m_info; }
     };
 
 }

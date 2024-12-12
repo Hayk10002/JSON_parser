@@ -7,6 +7,7 @@
 #include <functional>
 #include <limits>
 #include <cmath>
+#include <iostream>
 
 #include "position.hpp"
 #include "parser_error.hpp"
@@ -15,6 +16,7 @@
 
 namespace hayk10002::json_parser::lexer
 {
+    using namespace parser_types;
     /// @brief token for literal values
     struct TokenLiteral { std::variant<typename json_traits<Json>::NullType, typename json_traits<Json>::BoolType> value; };
 
@@ -36,6 +38,48 @@ namespace hayk10002::json_parser::lexer
             OBJECT_START = '{',
             OBJECT_END = '}',
         } type;
+    };
+
+    struct Token
+    {
+        std::variant<TokenLiteral, TokenNumber, TokenString, TokenSyntax> inner;
+        bool is_literal() const { return std::holds_alternative<TokenLiteral>(inner); }
+        bool is_number()  const { return std::holds_alternative<TokenNumber>(inner); }
+        bool is_string()  const { return std::holds_alternative<TokenString>(inner); }
+        bool is_syntax(TokenSyntax::Type type = TokenSyntax::Type{0}) const 
+        { 
+            return std::holds_alternative<TokenSyntax>(inner) && ((type != 0) == (std::get<TokenSyntax>(inner).type == type)); 
+        }
+
+        TokenLiteral&       get_literal()       { return std::get<TokenLiteral>(inner); }
+        const TokenLiteral& get_literal() const { return std::get<TokenLiteral>(inner); }
+        TokenNumber&        get_number()        { return std::get<TokenNumber>(inner); }
+        const TokenNumber&  get_number()  const { return std::get<TokenNumber>(inner); }
+        TokenString&        get_string()        { return std::get<TokenString>(inner); }
+        const TokenString&  get_string()  const { return std::get<TokenString>(inner); }
+        TokenSyntax&        get_syntax()        { return std::get<TokenSyntax>(inner); }
+        const TokenSyntax&  get_syntax()  const { return std::get<TokenSyntax>(inner); }
+
+        friend std::ostream& operator<<(std::ostream& out, const Token& token)
+        {
+            if (token.is_literal())
+            {
+                auto t = token.get_literal().value;
+                if (t.index() == 0) out << "null";
+                else out << (std::get<1>(t) ? "true" : "false");
+            }
+            else if (token.is_number())
+            {
+                auto t = token.get_number().value;
+                std::visit([&out](const auto& arg){ out << arg; }, t);
+            }
+            else if (token.is_string())
+                out << '"' << token.get_string().value << '"';
+            else
+                out << '\'' << char(token.get_syntax().type) << '\'';
+
+            return out;
+        }
     };
 
     class Cursor
@@ -426,15 +470,15 @@ namespace hayk10002::json_parser::lexer
             Position start_pos = input.get_pos();
             CharParser neg_sign_parser('-'), pos_sign_parser('+'), dot_parser('.'), e_parser([](char ch) { return ch == 'e' || ch == 'E'; });
             DigitParser digit_parser;
-            parser_types::Nothing<InputType> nothing_parser;
-            parser_types::Cycle digits_parser{digit_parser};
+            Nothing<InputType> nothing_parser;
+            Cycle digits_parser{digit_parser};
             if (auto ch = input.peek_next(); !ch || (*ch != '-' && !std::isdigit(*ch))) 
             {
                 if (!ch) return itlib::unexpected(UnexpectedEndOfInput{start_pos});
                 return itlib::unexpected(ExpectedANumber{start_pos});
             };
 
-            bool is_negative = parser_types::Or{neg_sign_parser, nothing_parser}.parse(input).value().index() == 0; // true for negative
+            bool is_negative = Or{neg_sign_parser, nothing_parser}.parse(input).value().index() == 0; // true for negative
             int sign = (!is_negative - is_negative); // 0 -> (1 - 0) = 1, 1 -> (0 - 1) = -1
 
             auto res = digit_parser.parse(input);
@@ -472,9 +516,9 @@ namespace hayk10002::json_parser::lexer
                 }
             }
 
-            auto fraction_parser = parser_types::Seq{dot_parser, digit_parser, digits_parser};
-            auto sign_parser = parser_types::Or{neg_sign_parser, pos_sign_parser, nothing_parser};
-            auto exponent_parser = parser_types::Seq{e_parser, sign_parser, digit_parser, digits_parser};
+            auto fraction_parser = Seq{dot_parser, digit_parser, digits_parser};
+            auto sign_parser = Or{neg_sign_parser, pos_sign_parser, nothing_parser};
+            auto exponent_parser = Seq{e_parser, sign_parser, digit_parser, digits_parser};
 
             auto res1 = fraction_parser.parse(input);
             if (res1.has_error() && res1.error().index() == 1)
@@ -640,7 +684,7 @@ namespace hayk10002::json_parser::lexer
                     break;
                 case 'u':
                     HexDigitParser hp{};
-                    auto res = parser_types::Seq{hp, hp, hp, hp}.parse(input);
+                    auto res = Seq{hp, hp, hp, hp}.parse(input);
                     if (res.has_error())
                     {
                         input.move(-2);
@@ -708,7 +752,7 @@ namespace hayk10002::json_parser::lexer
 
                     input.move(2);
 
-                    res = parser_types::Seq{hp, hp, hp, hp}.parse(input);
+                    res = Seq{hp, hp, hp, hp}.parse(input);
                     if (res.has_error())
                     {
                         input.move(-2);
@@ -735,5 +779,88 @@ namespace hayk10002::json_parser::lexer
             return TokenString{json_traits<Json>::StringType{result}};
         }
 
+    };
+
+    class JsonLexer
+    {
+        bool m_to_the_end_of_input;
+    public:
+        using InputType = Cursor;
+        using ReturnType = std::vector<Token>;
+        using ErrorType = ParserError<UnexpectedCharacter, InvalidLiteral, ExpectedADigit, ExpectedADigitOrASign, InvalidEncoding, UnexpectedControlCharacter, InvalidEscape, UnexpectedEndOfInput>;
+        
+        /// @param to_the_end_of_input is it required to parse the input entirely, or can stop if encountering unexpected token
+        JsonLexer(bool to_the_end_of_input = true): m_to_the_end_of_input(to_the_end_of_input){}    
+        
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
+        {
+            TokenLiteralLexer lit_l{};
+            TokenNumberLexer num_l{};
+            TokenStringLexer str_l{};
+            TokenSyntaxLexer syn_l{};
+
+            Or token_l{lit_l, num_l, str_l, syn_l};
+            CharParser white_space_char_p{[](char ch) { return ch == '\t' || ch == '\n' || ch == '\r' || ch == ' '; }};
+            Cycle ws_p{white_space_char_p};
+
+            Position start_pos = input.get_pos();
+
+            // skip whitespace at the start of input
+            ws_p.parse(input);
+
+
+            Cycle tokens_l{token_l, ws_p};
+            auto result = tokens_l.parse(input).value();
+
+            // skip whitespace at the end of input
+            ws_p.parse(input);
+
+            std::vector<Token> tokens(result.size());
+            for (size_t i = 0; i < tokens.size(); i++) tokens[i] = Token{result[i]};
+
+            if (!m_to_the_end_of_input) return tokens;
+
+            auto [lit_err, num_err, str_err, syn_err] = std::get<0>(tokens_l.get_info());
+
+            if (!std::holds_alternative<UnexpectedEndOfInput>(lit_err.inner) ||
+                !std::holds_alternative<UnexpectedEndOfInput>(num_err.inner) ||
+                !std::holds_alternative<UnexpectedEndOfInput>(str_err.inner) ||
+                !std::holds_alternative<UnexpectedEndOfInput>(syn_err.inner))
+            {
+                if (lit_err.inner.index() != 0)
+                {
+                    input.set_pos(start_pos);
+                    return itlib::unexpected(lit_err);
+                }
+
+                if (num_err.inner.index() != 0)
+                {
+                    input.set_pos(start_pos);
+                    return itlib::unexpected(num_err);
+                }
+
+                if (str_err.inner.index() != 0)
+                {
+                    input.set_pos(start_pos);
+                    return itlib::unexpected(str_err);
+                }
+
+                if (syn_err.inner.index() != 0)
+                {
+                    input.set_pos(start_pos);
+                    return itlib::unexpected(syn_err);
+                }
+            }
+
+            if (input.peek_next()) 
+            {
+                Position curr_pos = input.get_pos();
+                char found = *input.next();
+                input.set_pos(start_pos);
+                return itlib::unexpected(UnexpectedCharacter(curr_pos, found, "a literal, a number, a string, or a syntax character"));
+            }
+
+            return tokens;
+        }
     };
 }
