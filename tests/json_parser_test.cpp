@@ -139,5 +139,48 @@ int main() {
         }
     }
 
+    //test TokenStringLexer
+    {
+        Cursor good_input{
+            R"("Hello, world!")"
+            R"("JSON allows UTF-8 😊")"
+            R"("This is a \"quoted\" string.")"
+            R"("Path to file: C:\\Users\\Example")"
+            R"("Line one\nLine two")"
+            R"("Emoji: 😊")"
+            R"("Chinese: 中文")"
+            R"("Arabic: العربية")"
+            R"("Devanagari: हिन्दी")"
+            R"("Mathematical symbols: ∑ ∆ ∞")"
+            R"("\u4F60\u597D\uD83D\uDE00\uD834\uDD1E\u26A1")"
+            R"("Miscellaneous: \u263A\u2665\u26A1")"
+            R"("Musical note: \uD834\uDD1E")"
+        };
+
+        TokenStringLexer str_l;
+        auto tokens = hayk10002::parser_types::Cycle{str_l}.parse(good_input).value();
+        for (const auto& token: tokens) 
+            std::cout << token.value << std::endl;
+
+        auto bad_inputs = 
+        {
+            "\"Invalid (raw surrogate pair): \xED\xA0\xBD\xED\xB8\x80\"",
+            "\"Invalid (unescaped control char): hello\u0009world\"",
+            "\"Invalid (unescaped backslash): C:\\path\\to\\file\"",
+            "\"Invalid (lone high surrogate): \\uD83D\"",
+            "\"Invalid (lone low surrogate): \\uDFFF\"",
+            "\"Invalid (invalid escape): \\x41\"",
+            "\"Unexpected end of input"
+        };
+
+        for (auto bad_input: bad_inputs)
+        {
+            Cursor input{bad_input};
+            auto err = str_l.parse(input);
+            assert(err.has_error());
+            std::cout << err.error().what() << std::endl;
+        }
+    }
+
     return 0;
 }

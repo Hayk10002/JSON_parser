@@ -97,7 +97,7 @@ namespace hayk10002
                 if (0 <= found < 32)
                 {
                     std::string_view name = control_character_names[found];
-                    const char escape[2] = {char('0' + (found > 15)), char((found > 25) ? ('a' + found - 26) : ('0' + found - 16))};
+                    const char escape[2] = {char('0' + (found > 15)), char((found % 16 > 9) ? ('a' + found % 16 - 9) : ('0' + found % 16))};
 
                     m_message = std::format("Unexpected control character ({}) at line: {}, col: {}, (pos: {}). It must be escaped with \"\\u00{}\".", name, pos.line, pos.col, pos.pos, escape);
                 }

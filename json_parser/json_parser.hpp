@@ -649,7 +649,7 @@ namespace hayk10002::json_parser::lexer
                         return itlib::unexpected(InvalidEscape(curr_pos, esc_str));
                     }
                     auto [a, b, c, d] = res.value();
-                    uint16_t val1 = a << 12 + b << 8 + c << 4 + d;
+                    uint16_t val1 = (a << 12) + (b << 8) + (c << 4) + d;
 
                     auto is_low_surrogate  = [](uint16_t val) { return (val & 0b1111110000000000) == 0b1101110000000000; };
                     auto is_high_surrogate = [](uint16_t val) { return (val & 0b1111110000000000) == 0b1101100000000000; };
@@ -719,7 +719,7 @@ namespace hayk10002::json_parser::lexer
                     }
 
                     auto [e, f, g, h] = res.value();
-                    uint16_t val2 = e << 12 + f << 8 + g << 4 + h;
+                    uint16_t val2 = (e << 12) + (f << 8) + (g << 4) + h;
 
                     if (!is_low_surrogate(val2))
                     {
