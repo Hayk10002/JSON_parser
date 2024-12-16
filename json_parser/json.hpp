@@ -9,7 +9,6 @@
 #include <string>
 #include <algorithm>
 
-#include "json_traits.hpp"
 #include "utils.hpp"
 #include "utf8_string.hpp"
 namespace hayk10002
@@ -19,13 +18,13 @@ namespace hayk10002
     class Json
     {
     public:
-        using NullType      = typename json_traits<Json>::NullType;
-        using BoolType      = typename json_traits<Json>::BoolType;
-        using IntType       = typename json_traits<Json>::IntType;
-        using FloatType     = typename json_traits<Json>::FloatType;
-        using StringType    = typename json_traits<Json>::StringType;
-        using ArrayType     = typename json_traits<Json>::ArrayType;
-        using ObjectType    = typename json_traits<Json>::ObjectType;
+        using NullType      = std::monostate;
+        using BoolType      = bool;
+        using IntType       = int64_t;
+        using FloatType     = double;
+        using StringType    = UTF8string;
+        using ArrayType     = std::vector<Json>;
+        using ObjectType    = std::unordered_map<StringType, Json>;
 
     private:
         
@@ -41,13 +40,46 @@ namespace hayk10002
 
     public:
 
-        static Json null        ()                       { return Json{}; }
-        static Json boolean     (const BoolType&    val) { Json res; res.m_data = val; return res; }
-        static Json number_int  (const IntType&     val) { Json res; res.m_data = val; return res; }
-        static Json number_float(const FloatType&   val) { Json res; res.m_data = val; return res; }
-        static Json string      (const StringType&  val) { Json res; res.m_data = val; return res; }
-        static Json array       (const ArrayType&   val) { Json res; res.m_data = val; return res; }
-        static Json object      (const ObjectType&  val) { Json res; res.m_data = val; return res; }
+        static Json null         ()                      { return Json{}; }
+        
+        static Json boolean      (const BoolType&   val) { Json res; res.m_data = val; return res; }
+        static Json number_int   (const IntType&    val) { Json res; res.m_data = val; return res; }
+        static Json number_float (const FloatType&  val) { Json res; res.m_data = val; return res; }
+        static Json string       (const StringType& val) { Json res; res.m_data = val; return res; }
+        static Json array        (const ArrayType&  val) { Json res; res.m_data = val; return res; }
+        static Json object       (const ObjectType& val) { Json res; res.m_data = val; return res; }
+
+        static Json boolean      (BoolType&&   val) { Json res; res.m_data = std::move(val); return res; }
+        static Json number_int   (IntType&&    val) { Json res; res.m_data = std::move(val); return res; }
+        static Json number_float (FloatType&&  val) { Json res; res.m_data = std::move(val); return res; }
+        static Json string       (StringType&& val) { Json res; res.m_data = std::move(val); return res; }
+        static Json array        (ArrayType&&  val) { Json res; res.m_data = std::move(val); return res; }
+        static Json object       (ObjectType&& val) { Json res; res.m_data = std::move(val); return res; }
+
+        bool is_null         () const { return std::holds_alternative<NullType>  (m_data); }
+        bool is_boolean      () const { return std::holds_alternative<BoolType>  (m_data); }
+        bool is_number_int   () const { return std::holds_alternative<IntType>   (m_data); }
+        bool is_number_float () const { return std::holds_alternative<FloatType> (m_data); }
+        bool is_string       () const { return std::holds_alternative<StringType>(m_data); }
+        bool is_array        () const { return std::holds_alternative<ArrayType> (m_data); }
+        bool is_object       () const { return std::holds_alternative<ObjectType>(m_data); }
+
+        NullType&   get_null         () { return std::get<NullType>  (m_data); }
+        BoolType&   get_boolean      () { return std::get<BoolType>  (m_data); }
+        IntType&    get_number_int   () { return std::get<IntType>   (m_data); }
+        FloatType&  get_number_float () { return std::get<FloatType> (m_data); }
+        StringType& get_string       () { return std::get<StringType>(m_data); }
+        ArrayType&  get_array        () { return std::get<ArrayType> (m_data); }
+        ObjectType& get_object       () { return std::get<ObjectType>(m_data); }
+
+        const NullType&   get_null         () const { return std::get<NullType>  (m_data); }
+        const BoolType&   get_boolean      () const { return std::get<BoolType>  (m_data); }
+        const IntType&    get_number_int   () const { return std::get<IntType>   (m_data); }
+        const FloatType&  get_number_float () const { return std::get<FloatType> (m_data); }
+        const StringType& get_string       () const { return std::get<StringType>(m_data); }
+        const ArrayType&  get_array        () const { return std::get<ArrayType> (m_data); }
+        const ObjectType& get_object       () const { return std::get<ObjectType>(m_data); }
+        
 
         friend std::ostream& operator<<(std::ostream& out, const Json& val)
         {

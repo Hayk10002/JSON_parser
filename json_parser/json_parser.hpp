@@ -12,19 +12,21 @@
 #include "position.hpp"
 #include "parser_error.hpp"
 #include "parser.hpp"
-#include "json_traits.hpp"
+#include "json.hpp"
 
-namespace hayk10002::json_parser::lexer
+namespace hayk10002::json_parser
 {
     using namespace parser_types;
+namespace lexer 
+{
     /// @brief token for literal values
-    struct TokenLiteral { std::variant<typename json_traits<Json>::NullType, typename json_traits<Json>::BoolType> value; };
+    struct TokenLiteral { std::variant<Json::NullType, Json::BoolType> value; };
 
     /// @brief token for number values
-    struct TokenNumber { std::variant<typename json_traits<Json>::IntType, typename json_traits<Json>::FloatType> value; };
+    struct TokenNumber { std::variant<Json::IntType, Json::FloatType> value; };
 
     /// @brief token for string values
-    struct TokenString { typename json_traits<Json>::StringType value; };
+    struct TokenString { Json::StringType value; };
 
     /// @brief token for syntax related characters
     struct TokenSyntax
@@ -32,7 +34,7 @@ namespace hayk10002::json_parser::lexer
         enum Type: char
         {
             COMMA = ',',
-            SEMICOLON = ':',
+            COLON = ':',
             ARRAY_START = '[',
             ARRAY_END = ']',
             OBJECT_START = '{',
@@ -43,6 +45,7 @@ namespace hayk10002::json_parser::lexer
     struct Token
     {
         std::variant<TokenLiteral, TokenNumber, TokenString, TokenSyntax> inner;
+        Position pos;
         bool is_literal() const { return std::holds_alternative<TokenLiteral>(inner); }
         bool is_number()  const { return std::holds_alternative<TokenNumber>(inner); }
         bool is_string()  const { return std::holds_alternative<TokenString>(inner); }
@@ -52,12 +55,13 @@ namespace hayk10002::json_parser::lexer
         }
 
         TokenLiteral&       get_literal()       { return std::get<TokenLiteral>(inner); }
-        const TokenLiteral& get_literal() const { return std::get<TokenLiteral>(inner); }
         TokenNumber&        get_number()        { return std::get<TokenNumber>(inner); }
-        const TokenNumber&  get_number()  const { return std::get<TokenNumber>(inner); }
         TokenString&        get_string()        { return std::get<TokenString>(inner); }
-        const TokenString&  get_string()  const { return std::get<TokenString>(inner); }
         TokenSyntax&        get_syntax()        { return std::get<TokenSyntax>(inner); }
+        
+        const TokenLiteral& get_literal() const { return std::get<TokenLiteral>(inner); }
+        const TokenNumber&  get_number()  const { return std::get<TokenNumber>(inner); }
+        const TokenString&  get_string()  const { return std::get<TokenString>(inner); }
         const TokenSyntax&  get_syntax()  const { return std::get<TokenSyntax>(inner); }
 
         friend std::ostream& operator<<(std::ostream& out, const Token& token)
@@ -174,7 +178,7 @@ namespace hayk10002::json_parser::lexer
         ///
         /// if moving would place cursor out of bounds, it returns up to start or end
         /// @param d how much to peek and in what direction
-        std::string_view peek(int d)
+        std::string_view peek(int d) const
         {
             // if moving d will go out of bounds, recalculate d
             if (int(m_pos) + d < 0) d = -m_pos;
@@ -184,7 +188,7 @@ namespace hayk10002::json_parser::lexer
         }
 
 
-        Position get_pos() { return m_pos; }
+        Position get_pos() const { return m_pos; }
         void set_pos(size_t pos) { move(pos - m_pos); }
         void set_pos(Position pos) { set_pos(pos.pos); }
 
@@ -200,7 +204,7 @@ namespace hayk10002::json_parser::lexer
         /// @brief get next character without moving the cursor
         /// @return return std::nullopt if at the end, or the next character
         /// @note this doesn't move the cursor
-        std::optional<char> peek_next()
+        std::optional<char> peek_next() const
         {
             if (auto v = peek(1); !v.empty()) return v[0];
             else return std::nullopt;
@@ -434,7 +438,7 @@ namespace hayk10002::json_parser::lexer
     public:
         using InputType = Cursor;
         using ReturnType = TokenSyntax;
-        using ErrorType = ParserError<UnexpectedCharacter, UnexpectedEndOfInput>;
+        using ErrorType = ParserError<ExpectedASyntax, UnexpectedEndOfInput>;
 
     private:
         CharParser m_chp;
@@ -444,7 +448,7 @@ namespace hayk10002::json_parser::lexer
             { 
                 return 
                     ch == TokenSyntax::COMMA ||
-                    ch == TokenSyntax::SEMICOLON ||
+                    ch == TokenSyntax::COLON ||
                     ch == TokenSyntax::ARRAY_START ||
                     ch == TokenSyntax::ARRAY_END ||
                     ch == TokenSyntax::OBJECT_START ||
@@ -453,7 +457,12 @@ namespace hayk10002::json_parser::lexer
         itlib::expected<ReturnType, ErrorType> parse(InputType& input)
         {
             auto res = m_chp.parse(input);
-            if (res.has_error()) return itlib::unexpected(res.error());
+            if (res.has_error())
+            {
+                auto err = res.error();
+                if (std::holds_alternative<UnexpectedEndOfInput>(err.inner)) return itlib::unexpected(err);
+                return itlib::unexpected(ExpectedASyntax(input.get_pos()));
+            }
             return TokenSyntax{TokenSyntax::Type{res.value()}};
         }
     };
@@ -470,7 +479,6 @@ namespace hayk10002::json_parser::lexer
             Position start_pos = input.get_pos();
             CharParser neg_sign_parser('-'), pos_sign_parser('+'), dot_parser('.'), e_parser([](char ch) { return ch == 'e' || ch == 'E'; });
             DigitParser digit_parser;
-            Nothing<InputType> nothing_parser;
             Cycle digits_parser{digit_parser};
             if (auto ch = input.peek_next(); !ch || (*ch != '-' && !std::isdigit(*ch))) 
             {
@@ -478,7 +486,7 @@ namespace hayk10002::json_parser::lexer
                 return itlib::unexpected(ExpectedANumber{start_pos});
             };
 
-            bool is_negative = Or{neg_sign_parser, nothing_parser}.parse(input).value().index() == 0; // true for negative
+            bool is_negative = Or{neg_sign_parser, Nothing<InputType>::parser}.parse(input).value().index() == 0; // true for negative
             int sign = (!is_negative - is_negative); // 0 -> (1 - 0) = 1, 1 -> (0 - 1) = -1
 
             auto res = digit_parser.parse(input);
@@ -490,14 +498,14 @@ namespace hayk10002::json_parser::lexer
 
             int first_digit = res.value();
 
-            json_traits<Json>::FloatType float_value = first_digit; float_value *= sign;
-            json_traits<Json>::IntType int_value = first_digit * sign;
+            Json::FloatType float_value = first_digit; float_value *= sign;
+            Json::IntType int_value = first_digit * sign;
             bool is_int = true;
 
             if (first_digit != 0) 
             {
-                const json_traits<Json>::IntType max = std::numeric_limits<json_traits<Json>::IntType>::max();
-                const json_traits<Json>::IntType min = std::numeric_limits<json_traits<Json>::IntType>::min();
+                const Json::IntType max = std::numeric_limits<Json::IntType>::max();
+                const Json::IntType min = std::numeric_limits<Json::IntType>::min();
                 auto digits = digits_parser.parse(input).value();
                 for (int digit: digits)
                 {
@@ -517,7 +525,7 @@ namespace hayk10002::json_parser::lexer
             }
 
             auto fraction_parser = Seq{dot_parser, digit_parser, digits_parser};
-            auto sign_parser = Or{neg_sign_parser, pos_sign_parser, nothing_parser};
+            auto sign_parser = Or{neg_sign_parser, pos_sign_parser, Nothing<InputType>::parser};
             auto exponent_parser = Seq{e_parser, sign_parser, digit_parser, digits_parser};
 
             auto res1 = fraction_parser.parse(input);
@@ -532,7 +540,7 @@ namespace hayk10002::json_parser::lexer
                 auto [_dot, first_digit, digits] = res1.value();
                 digits.insert(digits.begin(), first_digit);
 
-                json_traits<Json>::FloatType pow_of_10 = 0.1;
+                Json::FloatType pow_of_10 = 0.1;
                 for (int digit: digits)
                 {
                     float_value += sign * pow_of_10 * digit;
@@ -564,13 +572,13 @@ namespace hayk10002::json_parser::lexer
                     exp *= 10;
                     exp += exp_sign * digit;
 
-                    if (exp > std::numeric_limits<json_traits<Json>::FloatType>::max_exponent10 * 2)
+                    if (exp > std::numeric_limits<Json::FloatType>::max_exponent10 * 2)
                     {
-                        float_value = std::numeric_limits<json_traits<Json>::FloatType>::infinity() * sign;
+                        float_value = std::numeric_limits<Json::FloatType>::infinity() * sign;
                         exp_out_of_limits = true;
                         break;
                     }
-                    else if (exp < std::numeric_limits<json_traits<Json>::FloatType>::min_exponent10 * 2)
+                    else if (exp < std::numeric_limits<Json::FloatType>::min_exponent10 * 2)
                     {
                         float_value = 0 * sign;
                         exp_out_of_limits = true;
@@ -578,11 +586,11 @@ namespace hayk10002::json_parser::lexer
                     }
                 }
 
-                if (!exp_out_of_limits) float_value *= std::pow(json_traits<Json>::FloatType{10}, exp);
+                if (!exp_out_of_limits) float_value *= std::pow(Json::FloatType{10}, exp);
             }
 
-            if (is_int) return TokenNumber{json_traits<Json>::IntType{int_value}};
-            return TokenNumber{json_traits<Json>::FloatType{float_value}};
+            if (is_int) return TokenNumber{Json::IntType{int_value}};
+            return TokenNumber{Json::FloatType{float_value}};
         }
     };
 
@@ -776,9 +784,17 @@ namespace hayk10002::json_parser::lexer
                 }
             }
 
-            return TokenString{json_traits<Json>::StringType{result}};
+            return TokenString{Json::StringType{result}};
         }
 
+    };
+
+    struct PositionGetter
+    {
+        using InputType = Cursor;
+        using ReturnType = Position;
+        using ErrorType = NoError;
+        itlib::expected<ReturnType, ErrorType> parse(const InputType& input) { return input.get_pos(); }
     };
 
     class JsonLexer
@@ -800,6 +816,8 @@ namespace hayk10002::json_parser::lexer
             TokenSyntaxLexer syn_l{};
 
             Or token_l{lit_l, num_l, str_l, syn_l};
+            PositionGetter pos_getter;
+            Seq token_and_pos{pos_getter, token_l};
             CharParser white_space_char_p{[](char ch) { return ch == '\t' || ch == '\n' || ch == '\r' || ch == ' '; }};
             Cycle ws_p{white_space_char_p};
 
@@ -809,18 +827,22 @@ namespace hayk10002::json_parser::lexer
             ws_p.parse(input);
 
 
-            Cycle tokens_l{token_l, ws_p};
+            Cycle tokens_l{token_and_pos, ws_p};
             auto result = tokens_l.parse(input).value();
 
             // skip whitespace at the end of input
             ws_p.parse(input);
 
             std::vector<Token> tokens(result.size());
-            for (size_t i = 0; i < tokens.size(); i++) tokens[i] = Token{result[i]};
+            for (size_t i = 0; i < tokens.size(); i++) 
+            {
+                auto [pos, token] = std::move(result[i]);
+                tokens[i] = Token{std::move(token), pos};
+            }
 
             if (!m_to_the_end_of_input) return tokens;
 
-            auto [lit_err, num_err, str_err, syn_err] = std::get<0>(tokens_l.get_info());
+            auto [lit_err, num_err, str_err, syn_err] = std::get<1>(std::get<0>(tokens_l.get_info()));
 
             if (!std::holds_alternative<UnexpectedEndOfInput>(lit_err.inner) ||
                 !std::holds_alternative<UnexpectedEndOfInput>(num_err.inner) ||
@@ -863,4 +885,219 @@ namespace hayk10002::json_parser::lexer
             return tokens;
         }
     };
+}
+
+    template<class T>
+        requires requires(T t) { requires std::same_as<std::decay_t<decltype(t.pos)>, Position>; }
+    class SpanCursor
+    {
+        std::span<T> span;
+        size_t pos;
+        Position end_pos;
+        
+    public:
+        size_t get_pos() const { return pos; }
+        void set_pos(size_t pos) { this->pos = pos; }
+
+        SpanCursor(std::span<T> sp): span{sp}, pos{} {}
+        T*       next()       { if (pos < span.size()) return &span[pos++]; else return nullptr; }
+        T*       peek()       { if (pos < span.size()) return &span[pos  ]; else return nullptr; }
+        const T* peek() const { if (pos < span.size()) return &span[pos  ]; else return nullptr; }
+        const Position& get_text_curr_pos() const { return peek() ? peek()->pos : get_text_end_pos(); }
+        const Position& get_text_end_pos()  const { return end_pos; }
+        operator std::span<T>() { return span; }
+    };
+
+    using namespace json_parser::lexer;
+    class JsonParserFromTokens
+    {
+    public:
+        using InputType = SpanCursor<Token>;
+        using ReturnType = Json;
+        using ErrorType = ParserError<ExpectedAValue, ExpectedAStringOrObjectEnd, ExpectedColon, ExpectedCommaOrObjectEnd, ExpectedAString, ExpectedAValueOrArrayEnd, ExpectedCommaOrArrayEnd>;
+
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input);
+    };
+
+    class LiteralParser
+    {
+    public:
+        using InputType = SpanCursor<Token>;
+        using ReturnType = Json;
+        using ErrorType = ExpectedALiteral;
+
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
+        {
+            Position curr_pos = input.get_text_curr_pos();
+            if (!input.peek() || !input.peek()->is_literal()) return itlib::unexpected(ExpectedALiteral{curr_pos});
+            Token token = std::move(*input.next());
+            Json res;
+            if (std::holds_alternative<Json::NullType>(token.get_literal().value)) return Json::null();
+            return Json::boolean(std::get<Json::BoolType>(std::move(token.get_literal().value)));
+        }
+    };
+
+    class NumberParser
+    {
+    public:
+        using InputType = SpanCursor<Token>;
+        using ReturnType = Json;
+        using ErrorType = ExpectedANumber;
+
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
+        {
+            Position curr_pos = input.get_text_curr_pos();
+            if (!input.peek() || !input.peek()->is_number()) return itlib::unexpected(ExpectedANumber{curr_pos});
+            Token token = std::move(*input.next());
+            Json res;
+            if (std::holds_alternative<Json::IntType>(token.get_number().value)) return Json::number_int(std::get<Json::IntType>(std::move(token.get_number().value)));
+            return Json::number_float(std::get<Json::FloatType>(std::move(token.get_number().value)));
+        }
+    };
+
+    class StringParser
+    {
+    public:
+        using InputType = SpanCursor<Token>;
+        using ReturnType = Json;
+        using ErrorType = ExpectedAString;
+
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
+        {
+            Position curr_pos = input.get_text_curr_pos();
+            if (!input.peek() || !input.peek()->is_string()) return itlib::unexpected(ExpectedAString{curr_pos});
+            return Json::string(std::move(input.next()->get_string().value));
+        }
+    };
+
+    class SyntaxParser
+    {
+    public:
+        using InputType = SpanCursor<Token>;
+        using ReturnType = TokenSyntax::Type;
+        using ErrorType = ExpectedASyntax;
+
+    private:
+        TokenSyntax::Type m_syn_type;
+
+    public:
+        SyntaxParser(TokenSyntax::Type syn_type) : m_syn_type{syn_type} {}
+
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
+        {
+            Position curr_pos = input.get_text_curr_pos();
+            if (!input.peek() || !input.peek()->is_syntax() || input.peek()->get_syntax().type != m_syn_type) return itlib::unexpected(ExpectedASyntax{curr_pos});
+            return std::move(input.next()->get_syntax().type);
+        }
+    };
+
+    class ArrayParser
+    {
+    public:
+        using InputType = SpanCursor<Token>;
+        using ReturnType = Json;
+        using ErrorType = ParserError<ExpectedArrayStart, ExpectedAStringOrObjectEnd, ExpectedColon, ExpectedCommaOrObjectEnd, ExpectedAString, ExpectedAValueOrArrayEnd, ExpectedCommaOrArrayEnd>;
+
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
+        {
+            SyntaxParser start_p{TokenSyntax::ARRAY_START};
+            SyntaxParser end_p{TokenSyntax::ARRAY_END};
+            SyntaxParser comma_p{TokenSyntax::COMMA};
+
+            JsonParserFromTokens val_p{};
+            Cycle values_p{val_p, comma_p};
+
+            size_t start_pos = input.get_pos();
+
+            auto res = Seq{start_p, values_p, end_p}.parse(input);
+            if (res.has_error())
+            {
+                input.set_pos(start_pos);
+                auto err = res.error();
+                if (err.index() == 0) return itlib::unexpected(ExpectedArrayStart{std::get<0>(err).pos});
+                if (err.index() == 2 && values_p.get_info().index() == 1) return itlib::unexpected(ExpectedCommaOrArrayEnd{std::get<2>(err).pos});
+                if (err.index() == 2 && values_p.get_info().index() == 0)
+                {
+                    auto err = std::get<0>(values_p.get_info());
+                    if (err.inner.index() == 0) return itlib::unexpected(ExpectedAValueOrArrayEnd{std::get<0>(err.inner).pos});
+                    return itlib::unexpected(err);
+                } 
+            }
+
+            return Json::array(std::move(std::get<1>(res.value())));
+        }
+    };
+
+    class ObjectParser
+    {
+    public:
+        using InputType = SpanCursor<Token>;
+        using ReturnType = Json;
+        using ErrorType = ParserError<ExpectedObjectStart, ExpectedAStringOrObjectEnd, ExpectedColon, ExpectedCommaOrObjectEnd, ExpectedAString, ExpectedAValueOrArrayEnd, ExpectedCommaOrArrayEnd>;
+
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
+        {
+            SyntaxParser start_p{TokenSyntax::OBJECT_START};
+            SyntaxParser end_p{TokenSyntax::OBJECT_END};
+            SyntaxParser comma_p{TokenSyntax::COMMA};
+            SyntaxParser colon_p{TokenSyntax::COLON};
+
+            StringParser key_p{};
+            JsonParserFromTokens val_p{};
+
+            Seq key_value_p{key_p, colon_p, val_p};
+
+            Cycle keys_values_p{key_value_p, comma_p};
+
+            size_t start_pos = input.get_pos();
+
+            auto res = Seq{start_p, keys_values_p, end_p}.parse(input);
+            if (res.has_error())
+            {
+                input.set_pos(start_pos);
+                auto err = res.error();
+                if (err.index() == 0) return itlib::unexpected(ExpectedObjectStart{std::get<0>(err).pos});
+                if (err.index() == 2 && keys_values_p.get_info().index() == 1) return itlib::unexpected(ExpectedCommaOrObjectEnd{std::get<2>(err).pos});
+                if (err.index() == 2 && keys_values_p.get_info().index() == 0)
+                {
+                    auto err = std::get<0>(keys_values_p.get_info());
+                    if (err.index() == 0) return itlib::unexpected(ExpectedAStringOrObjectEnd{std::get<0>(err).pos});
+                    if (err.index() == 1) return itlib::unexpected(ExpectedColon{std::get<1>(err).pos});
+                    if (err.index() == 2) 
+                    {
+                        auto error = std::get<2>(err);
+                        if (error.inner.index() == 0) return itlib::unexpected(ExpectedAValueOrArrayEnd{std::get<0>(error.inner).pos});
+                        return itlib::unexpected(error);
+                    }
+                } 
+            }
+            auto [_s, keys_and_values, _e] = std::move(res.value());
+
+            Json::ObjectType result{};
+            for (auto it = keys_and_values.begin(); it != keys_and_values.end(); it++)
+            {
+                result[std::get<0>(*it).get_string()] = std::get<2>(*it);
+            }
+            return Json::object(std::move(result));
+        }
+    };
+
+    itlib::expected<JsonParserFromTokens::ReturnType, JsonParserFromTokens::ErrorType> JsonParserFromTokens::parse(InputType &input)
+    {
+        LiteralParser lit_p{};
+        NumberParser num_p{};
+        StringParser str_p{};
+        ArrayParser arr_p{};
+        ObjectParser obj_p{};
+        auto res = Or{lit_p, num_p, str_p, arr_p, obj_p}.parse(input);
+
+        if (res.has_value()) return std::visit([](Json&& val){ return std::move(val); }, std::move(res.value()));
+
+        auto [lit_err, num_err, str_err, arr_err, obj_err] = res.error();
+
+        if (arr_err.inner.index() != 0) return itlib::unexpected(arr_err);
+        if (obj_err.inner.index() != 0) return itlib::unexpected(obj_err);
+
+        return itlib::unexpected(ExpectedAValue{input.get_text_curr_pos()});
+    }
 }

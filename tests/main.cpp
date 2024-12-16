@@ -66,7 +66,7 @@ R"([
 0.1e1,
 1e-1,
 1e00,2e+00,2e-00
-,"rosebud"] sfkjhsjkf)";
+,"rosebud"])";
 
     Json value = Json::array(
     {

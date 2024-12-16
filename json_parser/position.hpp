@@ -15,6 +15,6 @@ namespace hayk10002::json_parser::lexer
 
         auto operator<=>(const Position& other) const = default;
 
-        operator size_t() { return pos; }
+        operator size_t() const { return pos; }
     };
 }

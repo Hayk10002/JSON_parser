@@ -84,7 +84,7 @@ int main() {
         TokenSyntaxLexer ll;
         assert(ll.parse(input).value().type == TokenSyntax::OBJECT_START);
         assert(ll.parse(input).value().type == TokenSyntax::ARRAY_START);
-        assert(ll.parse(input).value().type == TokenSyntax::SEMICOLON);
+        assert(ll.parse(input).value().type == TokenSyntax::COLON);
         assert(ll.parse(input).value().type == TokenSyntax::COMMA);
         assert(ll.parse(input).value().type == TokenSyntax::ARRAY_END);
         assert(ll.parse(input).value().type == TokenSyntax::OBJECT_END);

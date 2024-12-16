@@ -31,12 +31,15 @@ namespace hayk10002
         ParserError(ET&& other): inner(std::forward<ET>(other)) {}
     };
 
-    namespace json_parser::lexer
+    namespace json_parser
+    {
+    namespace lexer
     {
         class UnexpectedCharacter : public std::exception
         {
         protected:
             std::string m_message;
+        
         public:
             char found;
             Position pos;
@@ -94,7 +97,7 @@ namespace hayk10002
 
             UnexpectedControlCharacter(const Position& pos, char found): UnexpectedCharacter(pos, found) 
             {
-                if (0 <= found < 32)
+                if (0 <= found && found < 32)
                 {
                     std::string_view name = control_character_names[found];
                     const char escape[2] = {char('0' + (found > 15)), char((found % 16 > 9) ? ('a' + found % 16 - 9) : ('0' + found % 16))};
@@ -131,8 +134,9 @@ namespace hayk10002
         class InvalidEncoding : public std::exception
         {
             std::string m_message;
-            Position pos;
+        
         public:
+            Position pos;
             InvalidEncoding(const Position& pos, std::string_view details = "", std::string_view encoding = "utf-8"):
                 pos(pos),
                 m_message(
@@ -154,9 +158,10 @@ namespace hayk10002
         class InvalidLiteral : public std::exception
         {
             std::string m_message;
+        
+        public:
             Position pos;
             std::string found;
-        public:
             InvalidLiteral(const Position& pos, std::string_view found):
                 found(found),
                 pos(pos),
@@ -169,9 +174,10 @@ namespace hayk10002
         class InvalidEscape : public std::exception
         {
             std::string m_message;
+        
+        public:
             Position pos;
             std::string found;
-        public:
             InvalidEscape(const Position& pos, std::string_view found):
                 found(found),
                 pos(pos),
@@ -184,8 +190,9 @@ namespace hayk10002
         class ExpectedALiteral : public std::exception
         {
             std::string m_message;
-            Position pos;
+        
         public:
+            Position pos;
             ExpectedALiteral(const Position& pos):
                 pos(pos),
                 m_message(std::format("Expected a literal (\"null\", \"true\" or \"false\") at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos))
@@ -197,8 +204,9 @@ namespace hayk10002
         class ExpectedANumber : public std::exception
         {
             std::string m_message;
-            Position pos;
+        
         public:
+            Position pos;
             ExpectedANumber(const Position& pos):
                 pos(pos),
                 m_message(std::format("Expected a number at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos))
@@ -210,11 +218,140 @@ namespace hayk10002
         class ExpectedAString : public std::exception
         {
             std::string m_message;
-            Position pos;
+        
         public:
+            Position pos;
             ExpectedAString(const Position& pos):
                 pos(pos),
                 m_message(std::format("Expected a string at line: {}, col: {}  (pos: {}) (strings start and end with the \" character).", pos.line, pos.col, pos.pos))
+            {}
+
+            virtual const char* what() const noexcept override { return m_message.c_str(); }
+        };
+
+        class ExpectedASyntax : public std::exception
+        {
+            std::string m_message;
+        
+        public:
+            Position pos;
+            ExpectedASyntax(const Position& pos):
+                pos(pos),
+                m_message(std::format("Expecte a syntax character (',', ':', '[', ']', '{{' or '}}') at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos))
+            {}
+
+            virtual const char* what() const noexcept override { return m_message.c_str(); }
+        };
+    }
+
+        using json_parser::lexer::Position;
+
+        class ExpectedArrayStart : public std::exception
+        {
+            std::string m_message;
+        
+        public:
+            Position pos;
+            ExpectedArrayStart(const Position& pos):
+                pos(pos),
+                m_message(std::format("Expected '[' at line: {}, col: {}  (pos: {})", pos.line, pos.col, pos.pos))
+            {}
+
+            virtual const char* what() const noexcept override { return m_message.c_str(); }
+        };
+
+        class ExpectedObjectStart : public std::exception
+        {
+            std::string m_message;
+        
+        public:
+            Position pos;
+            ExpectedObjectStart(const Position& pos):
+                pos(pos),
+                m_message(std::format("Expected '{{' at line: {}, col: {}  (pos: {})", pos.line, pos.col, pos.pos))
+            {}
+
+            virtual const char* what() const noexcept override { return m_message.c_str(); }
+        };
+        class ExpectedAValue : public std::exception
+        {
+            std::string m_message;
+        
+        public:
+            Position pos;
+            ExpectedAValue(const Position& pos):
+                pos(pos),
+                m_message(std::format("Expected a value at line: {}, col: {}  (pos: {})", pos.line, pos.col, pos.pos))
+            {}
+
+            virtual const char* what() const noexcept override { return m_message.c_str(); }
+        };
+
+        class ExpectedAStringOrObjectEnd : public std::exception
+        {
+            std::string m_message;
+        
+        public:
+            Position pos;
+            ExpectedAStringOrObjectEnd(const Position& pos):
+                pos(pos),
+                m_message(std::format("Expected a string or '}}' at line: {}, col: {}  (pos: {})", pos.line, pos.col, pos.pos))
+            {}
+
+            virtual const char* what() const noexcept override { return m_message.c_str(); }
+        };
+
+        class ExpectedColon : public std::exception
+        {
+            std::string m_message;
+        
+        public:
+            Position pos;
+            ExpectedColon(const Position& pos):
+                pos(pos),
+                m_message(std::format("Expected ':' at line: {}, col: {}  (pos: {})", pos.line, pos.col, pos.pos))
+            {}
+
+            virtual const char* what() const noexcept override { return m_message.c_str(); }
+        };
+
+        class ExpectedCommaOrObjectEnd : public std::exception
+        {
+            std::string m_message;
+        
+        public:
+            Position pos;
+            ExpectedCommaOrObjectEnd(const Position& pos):
+                pos(pos),
+                m_message(std::format("Expected a ',' or '}}' at line: {}, col: {}  (pos: {})", pos.line, pos.col, pos.pos))
+            {}
+
+            virtual const char* what() const noexcept override { return m_message.c_str(); }
+        };
+
+        class ExpectedAValueOrArrayEnd : public std::exception
+        {
+            std::string m_message;
+        
+        public:
+            Position pos;
+            ExpectedAValueOrArrayEnd(const Position& pos):
+                pos(pos),
+                m_message(std::format("Expected a value or ']' at line: {}, col: {}  (pos: {})", pos.line, pos.col, pos.pos))
+            {}
+
+            virtual const char* what() const noexcept override { return m_message.c_str(); }
+        };
+        
+        class ExpectedCommaOrArrayEnd : public std::exception
+        {
+            std::string m_message;
+        
+        public:
+            Position pos;
+            ExpectedCommaOrArrayEnd(const Position& pos):
+                pos(pos),
+                m_message(std::format("Expected ',' or ']' at line: {}, col: {}  (pos: {})", pos.line, pos.col, pos.pos))
             {}
 
             virtual const char* what() const noexcept override { return m_message.c_str(); }
