@@ -891,7 +891,7 @@ namespace lexer
         requires requires(T t) { requires std::same_as<std::decay_t<decltype(t.pos)>, Position>; }
     class SpanCursor
     {
-        std::span<T> span;
+        std::span<const T> span;
         size_t pos;
         Position end_pos;
         
@@ -899,13 +899,12 @@ namespace lexer
         size_t get_pos() const { return pos; }
         void set_pos(size_t pos) { this->pos = pos; }
 
-        SpanCursor(std::span<T> sp): span{sp}, pos{} {}
-        T*       next()       { if (pos < span.size()) return &span[pos++]; else return nullptr; }
-        T*       peek()       { if (pos < span.size()) return &span[pos  ]; else return nullptr; }
+        SpanCursor(std::span<T> sp, Position end_pos): span{sp}, pos{}, end_pos{end_pos} {}
+        const T* next()       { if (pos < span.size()) return &span[pos++]; else return nullptr; }
         const T* peek() const { if (pos < span.size()) return &span[pos  ]; else return nullptr; }
         const Position& get_text_curr_pos() const { return peek() ? peek()->pos : get_text_end_pos(); }
         const Position& get_text_end_pos()  const { return end_pos; }
-        operator std::span<T>() { return span; }
+        operator std::span<const T>() { return span; }
     };
 
     using namespace json_parser::lexer;
@@ -966,7 +965,7 @@ namespace lexer
         {
             Position curr_pos = input.get_text_curr_pos();
             if (!input.peek() || !input.peek()->is_string()) return itlib::unexpected(ExpectedAString{curr_pos});
-            return Json::string(std::move(input.next()->get_string().value));
+            return Json::string(input.next()->get_string().value);
         }
     };
 
@@ -987,7 +986,7 @@ namespace lexer
         {
             Position curr_pos = input.get_text_curr_pos();
             if (!input.peek() || !input.peek()->is_syntax() || input.peek()->get_syntax().type != m_syn_type) return itlib::unexpected(ExpectedASyntax{curr_pos});
-            return std::move(input.next()->get_syntax().type);
+            return TokenSyntax::Type{input.next()->get_syntax().type};
         }
     };
 
