@@ -110,5 +110,8 @@ namespace hayk10002
             }, val.m_data);
             return out;
         }
+
+        /// @note this can return false results due to floating point presicion
+        auto operator<=>(const Json& other) const = default;
     };
 }
