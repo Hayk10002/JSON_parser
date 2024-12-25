@@ -61,11 +61,11 @@ namespace hayk10002::parser_types
         // In case of error, will be empty, in case of success the failed parser errors will be saved
         using InfoType = std::tuple<std::optional<typename FirstType::ErrorType>, std::optional<typename Types::ErrorType>...>;
 
-        Or(FirstType& first_parser, Types&... parsers) : m_parsers{first_parser, parsers...} {}
+        Or(RefOrOwned<FirstType> first_parser, RefOrOwned<Types>... parsers) : m_parsers{first_parser, parsers...} {}
 
     private:
         InfoType m_info{};
-        std::tuple<FirstType&, Types&...> m_parsers;
+        std::tuple<RefOrOwned<FirstType>, RefOrOwned<Types>...> m_parsers;
 
     public:
         itlib::expected<ReturnType, ErrorType> parse(InputType& input)
@@ -84,7 +84,7 @@ namespace hayk10002::parser_types
                 auto parser = std::get<I>(m_parsers);
 
                 // try to parse
-                auto res = parser.parse(input);
+                auto res = parser.get().parse(input);
 
                 //if successfull
                 if (res.has_value())
@@ -123,6 +123,9 @@ namespace hayk10002::parser_types
         const InfoType& get_info() { return m_info; }
     };
 
+    template<typename ...T>
+    Or(T...) -> Or<std::decay_t<T>...>;
+
     /// @brief A parser, that can run other parsers and if one of them succeds, this returns the successfully parsed value
     template<ParserType FirstType, ParserType ...Types>
         // All input types need to be the same type
@@ -141,11 +144,11 @@ namespace hayk10002::parser_types
         // In case of success, will be empty, in case of error the successfully parsed values will be saved
         using InfoType = std::tuple<std::optional<typename FirstType::ReturnType>, std::optional<typename Types::ReturnType>...>;
 
-        Seq(FirstType& first_parser, Types&... parsers) : m_parsers{first_parser, parsers...} {}
+        Seq(RefOrOwned<FirstType> first_parser, RefOrOwned<Types>... parsers) : m_parsers{first_parser, parsers...} {}
 
     private:
         InfoType m_info{};
-        std::tuple<FirstType&, Types&...> m_parsers;
+        std::tuple<RefOrOwned<FirstType>, RefOrOwned<Types>...> m_parsers;
 
     public:
         itlib::expected<ReturnType, ErrorType> parse(InputType& input)
@@ -166,7 +169,7 @@ namespace hayk10002::parser_types
                 auto parser = std::get<I>(m_parsers);
 
                 // trye parser to parse
-                auto res = parser.parse(input);
+                auto res = parser.get().parse(input);
 
                 // if successfull
                 if (res.has_value())
@@ -204,6 +207,9 @@ namespace hayk10002::parser_types
         const InfoType& get_info() { return m_info; }
     };
 
+    template<typename ...T>
+    Seq(T...) -> Seq<std::decay_t<T>...>;
+
     /// @brief Parse nothing from input, can be use in combination with parser_types::Or
     template<typename InputT>
     struct Nothing
@@ -211,8 +217,6 @@ namespace hayk10002::parser_types
         using InputType = InputT;
         using ReturnType = std::monostate;
         using ErrorType = NoError;
-
-        inline static Nothing parser{};
 
         // do nothing
         itlib::expected<ReturnType, ErrorType> parse(const InputType& input)
@@ -239,12 +243,12 @@ namespace hayk10002::parser_types
         // Information about what failed
         using InfoType = std::variant<typename MainType::ErrorType, typename SeparatorType::ErrorType>;
 
-        Cycle(MainType& main_parser, SeparatorType& separator_parser = Nothing<InputType>::parser) : m_main_parser{main_parser}, m_separator_parser{separator_parser} {}
+        Cycle(RefOrOwned<MainType> main_parser, RefOrOwned<SeparatorType> separator_parser = SeparatorType{}) : m_main_parser{main_parser}, m_separator_parser{separator_parser} {}
 
     private:
         std::optional<InfoType> m_info{};
-        MainType& m_main_parser;
-        SeparatorType& m_separator_parser;
+        RefOrOwned<MainType> m_main_parser;
+        RefOrOwned<SeparatorType> m_separator_parser;
 
     public:
         itlib::expected<ReturnType, ErrorType> parse(InputType& input)
@@ -252,7 +256,7 @@ namespace hayk10002::parser_types
             ReturnType return_val{};
 
             // parse a value, in case of an error save it in m_info and return empty vector, else push the parsed value into the vector
-            auto res = m_main_parser.parse(input);
+            auto res = m_main_parser.get().parse(input);
             if(res.has_error())
             {
                 m_info = InfoType{std::in_place_index_t<0>{}, std::move(res).error()};
@@ -263,7 +267,7 @@ namespace hayk10002::parser_types
             while(true)
             {
                 // parse a separator, in case of an error save it in m_info and return already parsed values
-                auto sep_res = m_separator_parser.parse(input);
+                auto sep_res = m_separator_parser.get().parse(input);
                 if(sep_res.has_error())
                 {
                     m_info = InfoType{std::in_place_index_t<1>{}, std::move(sep_res).error()};
@@ -271,7 +275,7 @@ namespace hayk10002::parser_types
                 }
 
                 // parse a value, in case of an error save it in m_info and return already parsed values, else push the parsed value into the vector
-                auto val_res = m_main_parser.parse(input);
+                auto val_res = m_main_parser.get().parse(input);
                 if(val_res.has_error())
                 {
                     m_info = InfoType{std::in_place_index_t<0>{}, std::move(val_res).error()};
@@ -287,5 +291,8 @@ namespace hayk10002::parser_types
         // Returns additional info about the last parse call
         const InfoType& get_info() { return *m_info; }
     };
+
+    template<typename ...T>
+    Cycle(T...) -> Cycle<std::decay_t<T>...>;
 
 }

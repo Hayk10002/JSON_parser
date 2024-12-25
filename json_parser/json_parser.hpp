@@ -477,7 +477,7 @@ namespace lexer
         itlib::expected<ReturnType, ErrorType> parse(InputType& input)
         {
             Position start_pos = input.get_pos();
-            CharParser neg_sign_parser('-'), pos_sign_parser('+'), dot_parser('.'), e_parser([](char ch) { return ch == 'e' || ch == 'E'; });
+            CharParser e_parser([](char ch) { return ch == 'e' || ch == 'E'; });
             DigitParser digit_parser;
             Cycle digits_parser{digit_parser};
             if (auto ch = input.peek_next(); !ch || (*ch != '-' && !std::isdigit(*ch))) 
@@ -486,7 +486,7 @@ namespace lexer
                 return itlib::unexpected(ExpectedANumber{start_pos});
             };
 
-            bool is_negative = Or{neg_sign_parser, Nothing<InputType>::parser}.parse(input).value().index() == 0; // true for negative
+            bool is_negative = Or{CharParser('-'), Nothing<InputType>{}}.parse(input).value().index() == 0; // true for negative
             int sign = (!is_negative - is_negative); // 0 -> (1 - 0) = 1, 1 -> (0 - 1) = -1
 
             auto res = digit_parser.parse(input);
@@ -509,8 +509,8 @@ namespace lexer
                 auto digits = digits_parser.parse(input).value();
                 for (int digit: digits)
                 {
-                    float_value *= 10;
-                    float_value += digit * sign;
+                    float_value *= Json::FloatType{10};
+                    float_value += Json::FloatType(digit * sign);
                     if (is_int)
                     {
                         // if overflow after multiplying with 10, switch to float
@@ -524,9 +524,11 @@ namespace lexer
                 }
             }
 
-            auto fraction_parser = Seq{dot_parser, digit_parser, digits_parser};
-            auto sign_parser = Or{neg_sign_parser, pos_sign_parser, Nothing<InputType>::parser};
+            auto fraction_parser = Seq{CharParser('.'), digit_parser, digits_parser};
+            auto sign_parser = Or{CharParser('-'), CharParser('+'), Nothing<InputType>{}};
             auto exponent_parser = Seq{e_parser, sign_parser, digit_parser, digits_parser};
+
+            int final_exp = 0;
 
             auto res1 = fraction_parser.parse(input);
             if (res1.has_error() && res1.error().index() == 1)
@@ -540,13 +542,16 @@ namespace lexer
                 auto [_dot, first_digit, digits] = res1.value();
                 digits.insert(digits.begin(), first_digit);
 
-                Json::FloatType pow_of_10 = 0.1;
                 for (int digit: digits)
                 {
-                    float_value += sign * pow_of_10 * digit;
-                    pow_of_10 /= 10;
+                    final_exp--;
+                    float_value *= Json::FloatType{10};
+                    float_value += Json::FloatType(sign * digit);
                 }
             }
+
+            int exp = 0;
+            bool exp_out_of_limits = false;
 
             auto res2 = exponent_parser.parse(input);
             if (res2.has_error() && res2.error().index() == 2)
@@ -565,8 +570,6 @@ namespace lexer
                 exp_sign = !exp_sign - exp_sign; // -1 or 1
                 digits.insert(digits.begin(), first_digit);
 
-                int exp = 0;
-                bool exp_out_of_limits = false;
                 for (int digit: digits)
                 {
                     exp *= 10;
@@ -586,7 +589,22 @@ namespace lexer
                     }
                 }
 
-                if (!exp_out_of_limits) float_value *= std::pow(Json::FloatType{10}, exp);
+                final_exp += exp;
+                
+            }
+
+            if (!exp_out_of_limits) 
+            {
+                while(final_exp > 0)
+                {
+                    float_value *= Json::FloatType{10};
+                    final_exp--;
+                }
+                while(final_exp < 0)
+                {
+                    float_value /= Json::FloatType{10};
+                    final_exp++;
+                }
             }
 
             if (is_int) return TokenNumber{Json::IntType{int_value}};
@@ -810,28 +828,21 @@ namespace lexer
         
         itlib::expected<ReturnType, ErrorType> parse(InputType& input)
         {
-            TokenLiteralLexer lit_l{};
-            TokenNumberLexer num_l{};
-            TokenStringLexer str_l{};
-            TokenSyntaxLexer syn_l{};
-
-            Or token_l{lit_l, num_l, str_l, syn_l};
-            PositionGetter pos_getter;
-            Seq token_and_pos{pos_getter, token_l};
-            CharParser white_space_char_p{[](char ch) { return ch == '\t' || ch == '\n' || ch == '\r' || ch == ' '; }};
-            Cycle ws_p{white_space_char_p};
+            Or token_l{TokenLiteralLexer{}, TokenNumberLexer{}, TokenStringLexer{}, TokenSyntaxLexer{}};
+            Seq token_and_pos{PositionGetter{}, token_l};
+            Cycle whitespace_p{CharParser{[](char ch) { return ch == '\t' || ch == '\n' || ch == '\r' || ch == ' '; }}};
 
             Position start_pos = input.get_pos();
 
             // skip whitespace at the start of input
-            ws_p.parse(input);
+            whitespace_p.parse(input);
 
 
-            Cycle tokens_l{token_and_pos, ws_p};
+            Cycle tokens_l{token_and_pos, whitespace_p};
             auto result = tokens_l.parse(input).value();
 
             // skip whitespace at the end of input
-            ws_p.parse(input);
+            whitespace_p.parse(input);
 
             std::vector<Token> tokens(result.size());
             for (size_t i = 0; i < tokens.size(); i++) 
@@ -997,98 +1008,89 @@ namespace lexer
         using ReturnType = Json;
         using ErrorType = ParserError<ExpectedArrayStart, ExpectedAStringOrObjectEnd, ExpectedColon, ExpectedCommaOrObjectEnd, ExpectedAString, ExpectedAValueOrArrayEnd, ExpectedCommaOrArrayEnd>;
 
-        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
-        {
-            SyntaxParser start_p{TokenSyntax::ARRAY_START};
-            SyntaxParser end_p{TokenSyntax::ARRAY_END};
-            SyntaxParser comma_p{TokenSyntax::COMMA};
-
-            JsonParserFromTokens val_p{};
-            Cycle values_p{val_p, comma_p};
-
-            size_t start_pos = input.get_pos();
-
-            auto res = Seq{start_p, values_p, end_p}.parse(input);
-            if (res.has_error())
-            {
-                input.set_pos(start_pos);
-                auto err = res.error();
-                if (err.index() == 0) return itlib::unexpected(ExpectedArrayStart{std::get<0>(err).pos});
-                if (err.index() == 2 && values_p.get_info().index() == 1) return itlib::unexpected(ExpectedCommaOrArrayEnd{std::get<2>(err).pos});
-                if (err.index() == 2 && values_p.get_info().index() == 0)
-                {
-                    auto err = std::get<0>(values_p.get_info());
-                    if (err.inner.index() == 0) return itlib::unexpected(ExpectedAValueOrArrayEnd{std::get<0>(err.inner).pos});
-                    return itlib::unexpected(err);
-                } 
-            }
-
-            return Json::array(std::move(std::get<1>(res.value())));
-        }
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input);
     };
+
+    itlib::expected<ArrayParser::ReturnType, ArrayParser::ErrorType> ArrayParser::parse(ArrayParser::InputType& input)
+    {
+        JsonParserFromTokens val_p{};
+        Cycle values_p{val_p, SyntaxParser{TokenSyntax::COMMA}};
+
+        size_t start_pos = input.get_pos();
+
+        auto res = Seq{SyntaxParser{TokenSyntax::ARRAY_START}, values_p, SyntaxParser{TokenSyntax::ARRAY_END}}.parse(input);
+        if (res.has_error())
+        {
+            input.set_pos(start_pos);
+            auto err = res.error();
+            if (err.index() == 0) return itlib::unexpected(ExpectedArrayStart{std::get<0>(err).pos});
+            if (err.index() == 2 && values_p.get_info().index() == 1) return itlib::unexpected(ExpectedCommaOrArrayEnd{std::get<2>(err).pos});
+            if (err.index() == 2 && values_p.get_info().index() == 0)
+            {
+                auto err = std::get<0>(values_p.get_info());
+                if (err.inner.index() == 0) return itlib::unexpected(ExpectedAValueOrArrayEnd{std::get<0>(err.inner).pos});
+                return itlib::unexpected(err);
+            } 
+        }
+
+        return Json::array(std::move(std::get<1>(res.value())));
+    }
 
     class ObjectParser
     {
     public:
         using InputType = SpanCursor<Token>;
         using ReturnType = Json;
-        using ErrorType = ParserError<ExpectedObjectStart, ExpectedAStringOrObjectEnd, ExpectedColon, ExpectedCommaOrObjectEnd, ExpectedAString, ExpectedAValueOrArrayEnd, ExpectedCommaOrArrayEnd>;
+        using ErrorType = ParserError<ExpectedObjectStart, ExpectedAStringOrObjectEnd, ExpectedColon, ExpectedCommaOrObjectEnd, ExpectedAString, ExpectedAValueOrArrayEnd, ExpectedCommaOrArrayEnd, ExpectedAValue>;
 
-        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
-        {
-            SyntaxParser start_p{TokenSyntax::OBJECT_START};
-            SyntaxParser end_p{TokenSyntax::OBJECT_END};
-            SyntaxParser comma_p{TokenSyntax::COMMA};
-            SyntaxParser colon_p{TokenSyntax::COLON};
-
-            StringParser key_p{};
-            JsonParserFromTokens val_p{};
-
-            Seq key_value_p{key_p, colon_p, val_p};
-
-            Cycle keys_values_p{key_value_p, comma_p};
-
-            size_t start_pos = input.get_pos();
-
-            auto res = Seq{start_p, keys_values_p, end_p}.parse(input);
-            if (res.has_error())
-            {
-                input.set_pos(start_pos);
-                auto err = res.error();
-                if (err.index() == 0) return itlib::unexpected(ExpectedObjectStart{std::get<0>(err).pos});
-                if (err.index() == 2 && keys_values_p.get_info().index() == 1) return itlib::unexpected(ExpectedCommaOrObjectEnd{std::get<2>(err).pos});
-                if (err.index() == 2 && keys_values_p.get_info().index() == 0)
-                {
-                    auto err = std::get<0>(keys_values_p.get_info());
-                    if (err.index() == 0) return itlib::unexpected(ExpectedAStringOrObjectEnd{std::get<0>(err).pos});
-                    if (err.index() == 1) return itlib::unexpected(ExpectedColon{std::get<1>(err).pos});
-                    if (err.index() == 2) 
-                    {
-                        auto error = std::get<2>(err);
-                        if (error.inner.index() == 0) return itlib::unexpected(ExpectedAValueOrArrayEnd{std::get<0>(error.inner).pos});
-                        return itlib::unexpected(error);
-                    }
-                } 
-            }
-            auto [_s, keys_and_values, _e] = std::move(res.value());
-
-            Json::ObjectType result{};
-            for (auto it = keys_and_values.begin(); it != keys_and_values.end(); it++)
-            {
-                result[std::get<0>(*it).get_string()] = std::get<2>(*it);
-            }
-            return Json::object(std::move(result));
-        }
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input);
     };
+
+    itlib::expected<ObjectParser::ReturnType, ObjectParser::ErrorType> ObjectParser::parse(ObjectParser::InputType& input)
+    {
+        StringParser key_p{};
+        JsonParserFromTokens val_p{};
+
+        Seq key_value_p{key_p, SyntaxParser{TokenSyntax::COLON}, val_p};
+
+        Cycle keys_values_p{key_value_p, SyntaxParser{TokenSyntax::COMMA}};
+
+        size_t start_pos = input.get_pos();
+
+        auto res = Seq{SyntaxParser{TokenSyntax::OBJECT_START}, keys_values_p, SyntaxParser{TokenSyntax::OBJECT_END}}.parse(input);
+        if (res.has_error())
+        {
+            input.set_pos(start_pos);
+            auto err = res.error();
+            if (err.index() == 0) return itlib::unexpected(ExpectedObjectStart{std::get<0>(err).pos});
+            if (err.index() == 2 && keys_values_p.get_info().index() == 1) return itlib::unexpected(ExpectedCommaOrObjectEnd{std::get<2>(err).pos});
+            if (err.index() == 2 && keys_values_p.get_info().index() == 0)
+            {
+                auto err = std::get<0>(keys_values_p.get_info());
+                if (err.index() == 0) return itlib::unexpected(ExpectedAStringOrObjectEnd{std::get<0>(err).pos});
+                if (err.index() == 1) return itlib::unexpected(ExpectedColon{std::get<1>(err).pos});
+                if (err.index() == 2) 
+                {
+                    auto error = std::get<2>(err);
+                    if (error.inner.index() == 0) return itlib::unexpected(ExpectedAValue{std::get<0>(error.inner).pos});
+                    return itlib::unexpected(error);
+                }
+            } 
+        }
+        auto [_s, keys_and_values, _e] = std::move(res.value());
+
+        Json::ObjectType result{};
+        for (auto it = keys_and_values.begin(); it != keys_and_values.end(); it++)
+        {
+            result[std::get<0>(*it).get_string()] = std::get<2>(*it);
+        }
+        return Json::object(std::move(result));
+    }
 
     itlib::expected<JsonParserFromTokens::ReturnType, JsonParserFromTokens::ErrorType> JsonParserFromTokens::parse(InputType &input)
     {
-        LiteralParser lit_p{};
-        NumberParser num_p{};
-        StringParser str_p{};
-        ArrayParser arr_p{};
-        ObjectParser obj_p{};
-        auto res = Or{lit_p, num_p, str_p, arr_p, obj_p}.parse(input);
+        Or p{LiteralParser{}, NumberParser{}, StringParser{}, ArrayParser{}, ObjectParser{}};
+        auto res = p.parse(input);
 
         if (res.has_value()) return std::visit([](Json&& val){ return std::move(val); }, std::move(res.value()));
 

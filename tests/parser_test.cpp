@@ -75,8 +75,7 @@ struct TwoOrThreeBoolsParser
     itlib::expected<ReturnType, ErrorType> parse(SpanWrapper& input)
     {
         BoolParser bp{};
-        Nothing<SpanWrapper> np{};
-        Or b_or_np{bp, np};
+        Or b_or_np{bp, Nothing<SpanWrapper>{}};
         Seq p{bp, bp, b_or_np};
 
         auto res = p.parse(input);
