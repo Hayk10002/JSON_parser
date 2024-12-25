@@ -13,6 +13,32 @@ namespace hayk10002
     /// @brief a class that cannot be constructed wihtout wierd ways, effectively does not have valid values 
     struct NonConstructible { NonConstructible() = delete; };
 
+    /// @brief a class that can hold a reference or an owned value
+    template <typename T>
+        requires requires { !std::is_reference_v<T>; } 
+    class RefOrOwned
+    {
+        std::variant<T, T*> m_inner;
+    public:
+        RefOrOwned(T& lref) : m_inner{ std::in_place_type<T*>, &lref } {}
+        RefOrOwned(const T& clref) : m_inner{ std::in_place_type<T>, clref } {}
+        RefOrOwned(T&& rref) : m_inner{ std::in_place_type<T>, std::move(rref) } {}
+        
+        T& get() 
+        { 
+            if (std::holds_alternative<T*>(m_inner)) 
+                return *std::get<T*>(m_inner);
+            return std::get<T>(m_inner);
+        }
+        
+        const T& get() const
+        { 
+            if (std::holds_alternative<T*>(m_inner)) 
+                return *std::get<T*>(m_inner);
+            return std::get<T>(m_inner);
+        }
+    };
+
     namespace detail
     {
         template<typename...Ts, typename Function, std::size_t... Is>
