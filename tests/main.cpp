@@ -88,7 +88,7 @@ R"([
             {"zero", Json::number_int(0)},
             {"one", Json::number_int(1)},
             {"space", Json::string(" ")},
-            {"quote", Json::string("")},
+            {"quote", Json::string("\"")},
             {"backslash", Json::string("\\")},
             {"controls", Json::string("\b\f\n\r\t")},
             {"slash", Json::string("/ & /")},
@@ -106,7 +106,7 @@ R"([
             {"address", Json::string("50 St. James Street")},
             {"url", Json::string("http://www.JSON.org/")},
             {"comment", Json::string("// /* <!-- --")},
-            {"# -- --> */", Json::string(" ")},
+            {"# -- --> * /", Json::string(" ")},
             {" s p a c e d ", Json::array({Json::number_int(1), Json::number_int(2), Json::number_int(3), Json::number_int(4), Json::number_int(5), Json::number_int(6), Json::number_int(7)})},
             {"compact", Json::array({Json::number_int(1), Json::number_int(2), Json::number_int(3), Json::number_int(4), Json::number_int(5), Json::number_int(6), Json::number_int(7)})},
             {"jsontext", Json::string("{\"object with 1 member\":[\"array with 1 element\"]}")},
@@ -128,6 +128,7 @@ R"([
 
     json_parser::lexer::JsonLexer lexer{true};
     json_parser::lexer::Cursor input{value_input};
+    json_parser::JsonParserFromTokens parser{};
     auto res = lexer.parse(input);
 
     if (res.has_error()) std::cout << res.error().what() << std::endl;
@@ -142,7 +143,31 @@ R"([
             first = false;
         }
         std::cout << " }";
+
+        for (auto it = tokens.begin(); it != tokens.end(); it++)
+        {
+
+            json_parser::SpanCursor tokens_input(std::span(tokens.begin(), it), it->pos);
+
+            auto res = parser.parse(tokens_input);
+
+            if (res.has_error()) std::cout << res.error().what() << std::endl;
+            else std::cout << res.value() << std::endl;
+        }
+
+        json_parser::SpanCursor tokens_input(std::span(tokens.begin(), tokens.end()), input.get_pos());
+
+        auto res = parser.parse(tokens_input);
+
+        if (res.has_error()) std::cout << res.error().what() << std::endl;
+        else 
+        {
+            std::cout << res.value() << std::endl;
+            std::cout << value << std::endl;
+        }
     }
+
+
 
     return 0;
 }

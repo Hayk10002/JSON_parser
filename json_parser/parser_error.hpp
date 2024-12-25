@@ -323,7 +323,7 @@ namespace hayk10002
             Position pos;
             ExpectedCommaOrObjectEnd(const Position& pos):
                 pos(pos),
-                m_message(std::format("Expected a ',' or '}}' at line: {}, col: {}  (pos: {})", pos.line, pos.col, pos.pos))
+                m_message(std::format("Expected ',' or '}}' at line: {}, col: {}  (pos: {})", pos.line, pos.col, pos.pos))
             {}
 
             virtual const char* what() const noexcept override { return m_message.c_str(); }
