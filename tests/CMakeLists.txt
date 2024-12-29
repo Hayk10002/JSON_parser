@@ -53,5 +53,3 @@ set(TARGET_NAMES
 foreach(header target IN ZIP_LISTS HEADER_FILES TARGET_NAMES)
     generate_test_for_header(${header} ${target})
 endforeach()
-
-target_compile_options(parser_test PRIVATE "-fconcepts-diagnostics-depth=4")
