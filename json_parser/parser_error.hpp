@@ -112,7 +112,9 @@ namespace hayk10002
             std::string m_message;
 
         public:
-            UnexpectedEndOfInput(const Position& pos):
+            Position pos;
+            UnexpectedEndOfInput(const Position& pos): 
+                pos(pos),
                 m_message(std::format("Unexpected end of input at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos))
             {}
 
@@ -242,6 +244,20 @@ namespace hayk10002
 
             virtual const char* what() const noexcept override { return m_message.c_str(); }
         };
+
+        class ExpectedAToken : public std::exception
+        {
+            std::string m_message;
+        
+        public:
+            Position pos;
+            ExpectedAToken(const Position& pos):
+                pos(pos),
+                m_message(std::format("Expecte a token (a literal, a number, a string, or a syntax character) at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos))
+            {}
+
+            virtual const char* what() const noexcept override { return m_message.c_str(); }
+        };
     }
 
         using json_parser::lexer::Position;
@@ -254,7 +270,7 @@ namespace hayk10002
             Position pos;
             ExpectedArrayStart(const Position& pos):
                 pos(pos),
-                m_message(std::format("Expected '[' at line: {}, col: {}  (pos: {})", pos.line, pos.col, pos.pos))
+                m_message(std::format("Expected '[' at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos))
             {}
 
             virtual const char* what() const noexcept override { return m_message.c_str(); }
@@ -268,7 +284,21 @@ namespace hayk10002
             Position pos;
             ExpectedObjectStart(const Position& pos):
                 pos(pos),
-                m_message(std::format("Expected '{{' at line: {}, col: {}  (pos: {})", pos.line, pos.col, pos.pos))
+                m_message(std::format("Expected '{{' at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos))
+            {}
+
+            virtual const char* what() const noexcept override { return m_message.c_str(); }
+        };
+
+        class ExpectedAValueAfterColon : public std::exception
+        {
+            std::string m_message;
+        
+        public:
+            Position pos;
+            ExpectedAValueAfterColon(const Position& pos):
+                pos(pos),
+                m_message(std::format("Expected a value after colon at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos))
             {}
 
             virtual const char* what() const noexcept override { return m_message.c_str(); }
@@ -281,7 +311,7 @@ namespace hayk10002
             Position pos;
             ExpectedAValue(const Position& pos):
                 pos(pos),
-                m_message(std::format("Expected a value at line: {}, col: {}  (pos: {})", pos.line, pos.col, pos.pos))
+                m_message(std::format("Expected a value at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos))
             {}
 
             virtual const char* what() const noexcept override { return m_message.c_str(); }
@@ -295,7 +325,7 @@ namespace hayk10002
             Position pos;
             ExpectedAStringOrObjectEnd(const Position& pos):
                 pos(pos),
-                m_message(std::format("Expected a string or '}}' at line: {}, col: {}  (pos: {})", pos.line, pos.col, pos.pos))
+                m_message(std::format("Expected a string or '}}' at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos))
             {}
 
             virtual const char* what() const noexcept override { return m_message.c_str(); }
@@ -309,7 +339,7 @@ namespace hayk10002
             Position pos;
             ExpectedColon(const Position& pos):
                 pos(pos),
-                m_message(std::format("Expected ':' at line: {}, col: {}  (pos: {})", pos.line, pos.col, pos.pos))
+                m_message(std::format("Expected ':' at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos))
             {}
 
             virtual const char* what() const noexcept override { return m_message.c_str(); }
@@ -323,7 +353,7 @@ namespace hayk10002
             Position pos;
             ExpectedCommaOrObjectEnd(const Position& pos):
                 pos(pos),
-                m_message(std::format("Expected ',' or '}}' at line: {}, col: {}  (pos: {})", pos.line, pos.col, pos.pos))
+                m_message(std::format("Expected ',' or '}}' at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos))
             {}
 
             virtual const char* what() const noexcept override { return m_message.c_str(); }
@@ -337,7 +367,7 @@ namespace hayk10002
             Position pos;
             ExpectedAValueOrArrayEnd(const Position& pos):
                 pos(pos),
-                m_message(std::format("Expected a value or ']' at line: {}, col: {}  (pos: {})", pos.line, pos.col, pos.pos))
+                m_message(std::format("Expected a value or ']' at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos))
             {}
 
             virtual const char* what() const noexcept override { return m_message.c_str(); }
@@ -351,7 +381,7 @@ namespace hayk10002
             Position pos;
             ExpectedCommaOrArrayEnd(const Position& pos):
                 pos(pos),
-                m_message(std::format("Expected ',' or ']' at line: {}, col: {}  (pos: {})", pos.line, pos.col, pos.pos))
+                m_message(std::format("Expected ',' or ']' at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos))
             {}
 
             virtual const char* what() const noexcept override { return m_message.c_str(); }

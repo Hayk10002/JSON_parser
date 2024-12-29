@@ -126,48 +126,12 @@ R"([
         Json::string("rosebud")
     });
 
-    json_parser::lexer::JsonLexer lexer{true};
+
+    json_parser::JsonParser parser;
     json_parser::lexer::Cursor input{value_input};
-    json_parser::JsonParserFromTokens parser{};
-    auto res = lexer.parse(input);
-
+    auto res = parser.parse(input);
     if (res.has_error()) std::cout << res.error().what() << std::endl;
-    else
-    {
-        auto tokens = res.value();
-        std::cout << "{ ";
-        bool first = true;
-        for (const auto& token: tokens)
-        {
-            std::cout << (first ? "" : ", ") << token;
-            first = false;
-        }
-        std::cout << " }";
-
-        for (auto it = tokens.begin(); it != tokens.end(); it++)
-        {
-
-            json_parser::SpanCursor tokens_input(std::span(tokens.begin(), it), it->pos);
-
-            auto res = parser.parse(tokens_input);
-
-            if (res.has_error()) std::cout << res.error().what() << std::endl;
-            else std::cout << res.value() << std::endl;
-        }
-
-        json_parser::SpanCursor tokens_input(std::span(tokens.begin(), tokens.end()), input.get_pos());
-
-        auto res = parser.parse(tokens_input);
-
-        if (res.has_error()) std::cout << res.error().what() << std::endl;
-        else 
-        {
-            std::cout << res.value() << std::endl;
-            std::cout << value << std::endl;
-        }
-    }
-
-
+    else std::cout << res.value() << std::endl;
 
     return 0;
 }

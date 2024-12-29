@@ -645,7 +645,7 @@ namespace lexer
             if (auto ch = input.peek_next(); !ch) 
                 return itlib::unexpected(UnexpectedEndOfInput{input.get_pos()});
 
-            // if next character isn't a double quote, retrun error
+            // if next character isn't a double quote, return error
             else if (*ch != '\"')
                 return itlib::unexpected(ExpectedAString{input.get_pos()});
 
@@ -878,8 +878,12 @@ namespace lexer
     public:
         using InputType = Cursor;
         using ReturnType = std::vector<Token>;
-        using ErrorType = ParserError<UnexpectedCharacter, InvalidLiteral, ExpectedADigit, ExpectedADigitOrASign, InvalidEncoding, UnexpectedControlCharacter, InvalidEscape, UnexpectedEndOfInput>;
+        using ErrorType = ParserError<ExpectedAToken, UnexpectedCharacter, InvalidLiteral, ExpectedADigit, ExpectedADigitOrASign, InvalidEncoding, UnexpectedControlCharacter, InvalidEscape, UnexpectedEndOfInput>;
         
+    private:
+        std::optional<ErrorType> m_error;
+
+    public:
         /// @param to_the_end_of_input is it required to parse the input entirely, or can stop if encountering unexpected token
         JsonLexer(bool to_the_end_of_input = true): m_to_the_end_of_input(to_the_end_of_input){}    
         
@@ -907,59 +911,70 @@ namespace lexer
             {
                 auto [pos, token] = std::move(result[i]);
                 tokens[i] = Token{std::move(token), pos};
-            }
-
-            // if there is no need to parse the input entirely, return the result
-            if (!m_to_the_end_of_input) return tokens;
+            } 
 
             // get errors, because of which the parsing stopped
             auto [lit_err, num_err, str_err, syn_err] = std::get<1>(std::get<0>(tokens_l.get_info()));
 
-            // if the error is not an UnexpectedEndOfInput
-            if (!std::holds_alternative<UnexpectedEndOfInput>(lit_err.inner) ||
-                !std::holds_alternative<UnexpectedEndOfInput>(num_err.inner) ||
-                !std::holds_alternative<UnexpectedEndOfInput>(str_err.inner) ||
-                !std::holds_alternative<UnexpectedEndOfInput>(syn_err.inner))
+            m_error = [&]() -> std::optional<ErrorType>
             {
-                // if the error is not a ExpectedALiteral, ExpectedANumber, etc., because if an error is like that, it means the token parser wasn't able to start parsing the new token
-                // so if token was partially parsed, return the error gotten from the respective token parser
 
-                if (lit_err.inner.index() != 0)
+                // if at least one of the errors indicates that the parser did not fail at the start of parsing due to empty input
+                if (!(std::holds_alternative<UnexpectedEndOfInput>(lit_err.inner) && std::get<UnexpectedEndOfInput>(lit_err.inner).pos == input.get_pos()) ||
+                    !(std::holds_alternative<UnexpectedEndOfInput>(num_err.inner) && std::get<UnexpectedEndOfInput>(lit_err.inner).pos == input.get_pos()) ||
+                    !(std::holds_alternative<UnexpectedEndOfInput>(str_err.inner) && std::get<UnexpectedEndOfInput>(lit_err.inner).pos == input.get_pos()) ||
+                    !(std::holds_alternative<UnexpectedEndOfInput>(syn_err.inner) && std::get<UnexpectedEndOfInput>(lit_err.inner).pos == input.get_pos()))
                 {
-                    input.set_pos(start_pos);
-                    return itlib::unexpected(lit_err);
+                    // if the error is not a ExpectedALiteral, ExpectedANumber, etc., because if an error is like that, it means the token parser wasn't able to start parsing the new token due to an unexpected character
+                    // so if token was partially parsed, return the error gotten from the respective token parser
+
+                    if (lit_err.inner.index() != 0)
+                    {
+                        input.set_pos(start_pos);
+                        return ErrorType{lit_err};
+                    }
+
+                    if (num_err.inner.index() != 0)
+                    {
+                        input.set_pos(start_pos);
+                        return ErrorType{num_err};
+                    }
+
+                    if (str_err.inner.index() != 0)
+                    {
+                        input.set_pos(start_pos);
+                        return ErrorType{str_err};
+                    }
+
+                    if (syn_err.inner.index() != 0)
+                    {
+                        input.set_pos(start_pos);
+                        return ErrorType{syn_err};
+                    }
                 }
 
-                if (num_err.inner.index() != 0)
+                // if input is not at the end, return error
+                if (input.peek_next()) 
                 {
+                    Position curr_pos = input.get_pos();
+                    char found = *input.next();
                     input.set_pos(start_pos);
-                    return itlib::unexpected(num_err);
+                    return ErrorType{ExpectedAToken(curr_pos)};
                 }
 
-                if (str_err.inner.index() != 0)
-                {
-                    input.set_pos(start_pos);
-                    return itlib::unexpected(str_err);
-                }
+                return std::nullopt;
 
-                if (syn_err.inner.index() != 0)
-                {
-                    input.set_pos(start_pos);
-                    return itlib::unexpected(syn_err);
-                }
-            }
+            }();
 
-            // if input is not at the end, return error
-            if (input.peek_next()) 
-            {
-                Position curr_pos = input.get_pos();
-                char found = *input.next();
-                input.set_pos(start_pos);
-                return itlib::unexpected(UnexpectedCharacter(curr_pos, found, "a literal, a number, a string, or a syntax character"));
-            }
+            // if there is no need to parse the input entirely, return the result
+            if (!m_to_the_end_of_input || !m_error) return tokens;
 
-            return tokens;
+            ErrorType error = std::move(*m_error);
+            m_error = std::nullopt;
+            return itlib::unexpected(std::move(error));
         }
+
+        std::optional<ErrorType> get_info() const { return m_error; }
     };
 }
 
@@ -1004,7 +1019,7 @@ namespace lexer
     public:
         using InputType = SpanCursor<Token>;
         using ReturnType = Json;
-        using ErrorType = ParserError<ExpectedAValue, ExpectedAStringOrObjectEnd, ExpectedColon, ExpectedCommaOrObjectEnd, ExpectedAString, ExpectedAValueOrArrayEnd, ExpectedCommaOrArrayEnd>;
+        using ErrorType = ParserError<ExpectedAValue, ExpectedAStringOrObjectEnd, ExpectedColon, ExpectedAValueAfterColon, ExpectedCommaOrObjectEnd, ExpectedAValueOrArrayEnd, ExpectedCommaOrArrayEnd>;
 
         itlib::expected<ReturnType, ErrorType> parse(InputType& input);
     };
@@ -1091,7 +1106,7 @@ namespace lexer
     public:
         using InputType = SpanCursor<Token>;
         using ReturnType = Json;
-        using ErrorType = ParserError<ExpectedArrayStart, ExpectedAStringOrObjectEnd, ExpectedColon, ExpectedCommaOrObjectEnd, ExpectedAString, ExpectedAValueOrArrayEnd, ExpectedCommaOrArrayEnd>;
+        using ErrorType = ParserError<ExpectedArrayStart, ExpectedAStringOrObjectEnd, ExpectedColon, ExpectedAValueAfterColon, ExpectedCommaOrObjectEnd, ExpectedAValueOrArrayEnd, ExpectedCommaOrArrayEnd>;
 
         itlib::expected<ReturnType, ErrorType> parse(InputType& input);
     };
@@ -1123,7 +1138,7 @@ namespace lexer
             {
                 auto err = std::get<0>(values_p.get_info());
 
-                // if wasn't being able to parse event the start of a json value
+                // if wasn't being able to parse even the start of a json value
                 if (err.inner.index() == 0) return itlib::unexpected(ExpectedAValueOrArrayEnd{std::get<0>(err.inner).pos});
 
                 // if started parsing a value and failed not at start, return the error gotten from value parser
@@ -1140,7 +1155,7 @@ namespace lexer
     public:
         using InputType = SpanCursor<Token>;
         using ReturnType = Json;
-        using ErrorType = ParserError<ExpectedObjectStart, ExpectedAStringOrObjectEnd, ExpectedColon, ExpectedCommaOrObjectEnd, ExpectedAString, ExpectedAValueOrArrayEnd, ExpectedCommaOrArrayEnd, ExpectedAValue>;
+        using ErrorType = ParserError<ExpectedObjectStart, ExpectedAStringOrObjectEnd, ExpectedColon, ExpectedAValueAfterColon, ExpectedCommaOrObjectEnd, ExpectedAValueOrArrayEnd, ExpectedCommaOrArrayEnd>;
 
         itlib::expected<ReturnType, ErrorType> parse(InputType& input);
     };
@@ -1188,7 +1203,7 @@ namespace lexer
                     auto error = std::get<2>(err);
 
                     // if wasn't able to parse even the start of a value
-                    if (error.inner.index() == 0) return itlib::unexpected(ExpectedAValue{std::get<0>(error.inner).pos});
+                    if (error.inner.index() == 0) return itlib::unexpected(ExpectedAValueAfterColon{std::get<0>(error.inner).pos});
 
                     // if started parsing a value and failed not at start, return the error gotten from value parser
                     return itlib::unexpected(error);
@@ -1224,4 +1239,44 @@ namespace lexer
 
         return itlib::unexpected(ExpectedAValue{input.get_text_curr_pos()});
     }
+
+    class JsonParser
+    {
+        using InputType = lexer::Cursor;
+        using ReturnType = Json;
+        using ErrorType = ParserError<
+            lexer::UnexpectedCharacter, 
+            lexer::InvalidLiteral, 
+            lexer::ExpectedADigit, 
+            lexer::ExpectedADigitOrASign, 
+            lexer::InvalidEncoding, 
+            lexer::UnexpectedControlCharacter, 
+            lexer::InvalidEscape,
+            lexer::UnexpectedEndOfInput,
+            ExpectedAValue, 
+            ExpectedAStringOrObjectEnd, 
+            ExpectedColon, 
+            ExpectedAValueAfterColon,
+            ExpectedCommaOrObjectEnd, 
+            ExpectedAValueOrArrayEnd, 
+            ExpectedCommaOrArrayEnd>;
+
+    public:
+        itlib::expected<ReturnType, ErrorType> parse(InputType& input)
+        {
+            json_parser::lexer::JsonLexer lexer{false};
+            json_parser::JsonParserFromTokens parser{};
+            auto tokens = lexer.parse(input).value();
+            auto error = lexer.get_info();
+            if (error && !std::holds_alternative<ExpectedAToken>((*error).inner))
+                return itlib::unexpected(*error);
+
+            SpanCursor parser_input{std::span{tokens}, input.get_pos()};
+
+            auto res = parser.parse(parser_input);
+            if (res.has_error()) return itlib::unexpected(res.error());
+
+            return std::move(res.value());                
+        }
+    };
 }
