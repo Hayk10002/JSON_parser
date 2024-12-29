@@ -266,6 +266,9 @@ namespace hayk10002::parser_types
 
             while(true)
             {
+                // store the position of cursor, because if the separator parses, but the next value doesn't, then the resulting cursor pos will need to be here 
+                auto backup_pos = input.get_pos();
+
                 // parse a separator, in case of an error save it in m_info and return already parsed values
                 auto sep_res = m_separator_parser.get().parse(input);
                 if(sep_res.has_error())
@@ -278,6 +281,7 @@ namespace hayk10002::parser_types
                 auto val_res = m_main_parser.get().parse(input);
                 if(val_res.has_error())
                 {
+                    input.set_pos(backup_pos);
                     m_info = InfoType{std::in_place_index_t<0>{}, std::move(val_res).error()};
                     return return_val;
                 }
