@@ -100,7 +100,7 @@ namespace hayk10002
                 if (0 <= found && found < 32)
                 {
                     std::string_view name = control_character_names[found];
-                    const char escape[2] = {char('0' + (found > 15)), char((found % 16 > 9) ? ('a' + found % 16 - 9) : ('0' + found % 16))};
+                    const char escape[3] = {char('0' + (found > 15)), char((found % 16 > 9) ? ('a' + found % 16 - 9) : ('0' + found % 16)), '\0'};
 
                     m_message = std::format("Unexpected control character ({}) at line: {}, col: {}, (pos: {}). It must be escaped with \"\\u00{}\".", name, pos.line, pos.col, pos.pos, escape);
                 }
@@ -290,15 +290,15 @@ namespace hayk10002
             virtual const char* what() const noexcept override { return m_message.c_str(); }
         };
 
-        class ExpectedAValueAfterColon : public std::exception
+        class ExpectedAValueAfterSyntax : public std::exception
         {
             std::string m_message;
         
         public:
             Position pos;
-            ExpectedAValueAfterColon(const Position& pos):
+            ExpectedAValueAfterSyntax(const Position& pos, char syntax_type):
                 pos(pos),
-                m_message(std::format("Expected a value after colon at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos))
+                m_message(std::format("Expected a value after '{}' at line: {}, col: {}  (pos: {}).", syntax_type, pos.line, pos.col, pos.pos))
             {}
 
             virtual const char* what() const noexcept override { return m_message.c_str(); }

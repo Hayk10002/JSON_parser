@@ -928,29 +928,10 @@ namespace lexer
                     // if the error is not a ExpectedALiteral, ExpectedANumber, etc., because if an error is like that, it means the token parser wasn't able to start parsing the new token due to an unexpected character
                     // so if token was partially parsed, return the error gotten from the respective token parser
 
-                    if (lit_err.inner.index() != 0)
-                    {
-                        input.set_pos(start_pos);
-                        return ErrorType{lit_err};
-                    }
-
-                    if (num_err.inner.index() != 0)
-                    {
-                        input.set_pos(start_pos);
-                        return ErrorType{num_err};
-                    }
-
-                    if (str_err.inner.index() != 0)
-                    {
-                        input.set_pos(start_pos);
-                        return ErrorType{str_err};
-                    }
-
-                    if (syn_err.inner.index() != 0)
-                    {
-                        input.set_pos(start_pos);
-                        return ErrorType{syn_err};
-                    }
+                    if (lit_err.inner.index() != 0) return ErrorType{lit_err};
+                    if (num_err.inner.index() != 0) return ErrorType{num_err};
+                    if (str_err.inner.index() != 0) return ErrorType{str_err};
+                    if (syn_err.inner.index() != 0) return ErrorType{syn_err};
                 }
 
                 // if input is not at the end, return error
@@ -958,7 +939,6 @@ namespace lexer
                 {
                     Position curr_pos = input.get_pos();
                     char found = *input.next();
-                    input.set_pos(start_pos);
                     return ErrorType{ExpectedAToken(curr_pos)};
                 }
 
@@ -969,6 +949,7 @@ namespace lexer
             // if there is no need to parse the input entirely, return the result
             if (!m_to_the_end_of_input || !m_error) return tokens;
 
+            input.set_pos(start_pos);
             ErrorType error = std::move(*m_error);
             m_error = std::nullopt;
             return itlib::unexpected(std::move(error));
@@ -1019,7 +1000,15 @@ namespace lexer
     public:
         using InputType = SpanCursor<Token>;
         using ReturnType = Json;
-        using ErrorType = ParserError<ExpectedAValue, ExpectedAStringOrObjectEnd, ExpectedColon, ExpectedAValueAfterColon, ExpectedCommaOrObjectEnd, ExpectedAValueOrArrayEnd, ExpectedCommaOrArrayEnd>;
+        using ErrorType = ParserError<
+            ExpectedAValue, 
+            ExpectedAStringOrObjectEnd, 
+            ExpectedColon, 
+            ExpectedAValueAfterSyntax, 
+            ExpectedCommaOrObjectEnd,
+            ExpectedAString, 
+            ExpectedAValueOrArrayEnd, 
+            ExpectedCommaOrArrayEnd>;
 
         itlib::expected<ReturnType, ErrorType> parse(InputType& input);
     };
@@ -1106,7 +1095,15 @@ namespace lexer
     public:
         using InputType = SpanCursor<Token>;
         using ReturnType = Json;
-        using ErrorType = ParserError<ExpectedArrayStart, ExpectedAStringOrObjectEnd, ExpectedColon, ExpectedAValueAfterColon, ExpectedCommaOrObjectEnd, ExpectedAValueOrArrayEnd, ExpectedCommaOrArrayEnd>;
+        using ErrorType = ParserError<
+            ExpectedArrayStart, 
+            ExpectedAStringOrObjectEnd, 
+            ExpectedColon, 
+            ExpectedAValueAfterSyntax, 
+            ExpectedCommaOrObjectEnd,
+            ExpectedAString, 
+            ExpectedAValueOrArrayEnd, 
+            ExpectedCommaOrArrayEnd>;
 
         itlib::expected<ReturnType, ErrorType> parse(InputType& input);
     };
@@ -1119,7 +1116,8 @@ namespace lexer
         size_t start_pos = input.get_pos();
 
         // parse array opening bracket, values, and a closing bracket
-        auto res = Seq{SyntaxParser{TokenSyntax::ARRAY_START}, values_p, SyntaxParser{TokenSyntax::ARRAY_END}}.parse(input);
+        Seq array_p{SyntaxParser{TokenSyntax::ARRAY_START}, values_p, SyntaxParser{TokenSyntax::ARRAY_END}};
+        auto res = array_p.parse(input);
 
         // if failed
         if (res.has_error())
@@ -1139,7 +1137,14 @@ namespace lexer
                 auto err = std::get<0>(values_p.get_info());
 
                 // if wasn't being able to parse even the start of a json value
-                if (err.inner.index() == 0) return itlib::unexpected(ExpectedAValueOrArrayEnd{std::get<0>(err.inner).pos});
+                if (err.inner.index() == 0) 
+                {
+                    // if a value was already parsed
+                    if (std::get<1>(array_p.get_info()) && std::get<1>(array_p.get_info())->size() != 0) 
+                        return itlib::unexpected(ExpectedAValueAfterSyntax(std::get<0>(err.inner).pos, TokenSyntax::COMMA));
+
+                    return itlib::unexpected(ExpectedAValueOrArrayEnd{std::get<0>(err.inner).pos});
+                }
 
                 // if started parsing a value and failed not at start, return the error gotten from value parser
                 return itlib::unexpected(err);
@@ -1155,7 +1160,15 @@ namespace lexer
     public:
         using InputType = SpanCursor<Token>;
         using ReturnType = Json;
-        using ErrorType = ParserError<ExpectedObjectStart, ExpectedAStringOrObjectEnd, ExpectedColon, ExpectedAValueAfterColon, ExpectedCommaOrObjectEnd, ExpectedAValueOrArrayEnd, ExpectedCommaOrArrayEnd>;
+        using ErrorType = ParserError<
+            ExpectedObjectStart, 
+            ExpectedAStringOrObjectEnd, 
+            ExpectedColon, 
+            ExpectedAValueAfterSyntax, 
+            ExpectedCommaOrObjectEnd,
+            ExpectedAString, 
+            ExpectedAValueOrArrayEnd, 
+            ExpectedCommaOrArrayEnd>;
 
         itlib::expected<ReturnType, ErrorType> parse(InputType& input);
     };
@@ -1172,7 +1185,8 @@ namespace lexer
         size_t start_pos = input.get_pos();
 
         // parse object opening bracket, then key value pairs, then closing bracket
-        auto res = Seq{SyntaxParser{TokenSyntax::OBJECT_START}, keys_values_p, SyntaxParser{TokenSyntax::OBJECT_END}}.parse(input);
+        Seq object_p{SyntaxParser{TokenSyntax::OBJECT_START}, keys_values_p, SyntaxParser{TokenSyntax::OBJECT_END}};
+        auto res = object_p.parse(input);
 
         // if failed
         if (res.has_error())
@@ -1186,13 +1200,20 @@ namespace lexer
             // if failed parsing the closing bracket, and before that failed parsing a comma
             if (err.index() == 2 && keys_values_p.get_info().index() == 1) return itlib::unexpected(ExpectedCommaOrObjectEnd{std::get<2>(err).pos});
 
-            // if failed parsing the closing bracket, and befroe that failed parsing a key value pair 
+            // if failed parsing the closing bracket, and before that failed parsing a key value pair 
             if (err.index() == 2 && keys_values_p.get_info().index() == 0)
             {
                 auto err = std::get<0>(keys_values_p.get_info());
 
                 // if failed parsing the key (a string)
-                if (err.index() == 0) return itlib::unexpected(ExpectedAStringOrObjectEnd{std::get<0>(err).pos});
+                if (err.index() == 0)
+                {
+                    // if a key value pair was already parsed
+                    if (std::get<1>(object_p.get_info()) && std::get<1>(object_p.get_info())->size() != 0) 
+                        return itlib::unexpected(ExpectedAString{std::get<0>(err).pos});
+
+                    return itlib::unexpected(ExpectedAStringOrObjectEnd{std::get<0>(err).pos});
+                } 
 
                 // if failed parsing the colon between the key and the value 
                 if (err.index() == 1) return itlib::unexpected(ExpectedColon{std::get<1>(err).pos});
@@ -1203,7 +1224,7 @@ namespace lexer
                     auto error = std::get<2>(err);
 
                     // if wasn't able to parse even the start of a value
-                    if (error.inner.index() == 0) return itlib::unexpected(ExpectedAValueAfterColon{std::get<0>(error.inner).pos});
+                    if (error.inner.index() == 0) return itlib::unexpected(ExpectedAValueAfterSyntax(std::get<0>(error.inner).pos, TokenSyntax::COLON));
 
                     // if started parsing a value and failed not at start, return the error gotten from value parser
                     return itlib::unexpected(error);
@@ -1256,8 +1277,9 @@ namespace lexer
             ExpectedAValue, 
             ExpectedAStringOrObjectEnd, 
             ExpectedColon, 
-            ExpectedAValueAfterColon,
-            ExpectedCommaOrObjectEnd, 
+            ExpectedAValueAfterSyntax, 
+            ExpectedCommaOrObjectEnd,
+            ExpectedAString, 
             ExpectedAValueOrArrayEnd, 
             ExpectedCommaOrArrayEnd>;
 
