@@ -1263,6 +1263,9 @@ namespace lexer
 
     class JsonParser
     {
+        bool m_to_the_end_of_input;
+
+    public:
         using InputType = lexer::Cursor;
         using ReturnType = Json;
         using ErrorType = ParserError<
@@ -1281,9 +1284,11 @@ namespace lexer
             ExpectedCommaOrObjectEnd,
             ExpectedAString, 
             ExpectedAValueOrArrayEnd, 
-            ExpectedCommaOrArrayEnd>;
+            ExpectedCommaOrArrayEnd,
+            ExpectedEndOfInput>;
 
-    public:
+        JsonParser(bool to_the_end_of_input = true): m_to_the_end_of_input(to_the_end_of_input) {}
+
         itlib::expected<ReturnType, ErrorType> parse(InputType& input)
         {
             json_parser::lexer::JsonLexer lexer{false};
@@ -1297,6 +1302,8 @@ namespace lexer
 
             auto res = parser.parse(parser_input);
             if (res.has_error()) return itlib::unexpected(res.error());
+
+            if (m_to_the_end_of_input && (input.peek_next() || parser_input.peek())) return itlib::unexpected(ExpectedEndOfInput(parser_input.get_text_curr_pos()));
 
             return std::move(res.value());                
         }

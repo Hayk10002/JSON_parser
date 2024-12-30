@@ -386,5 +386,19 @@ namespace hayk10002
 
             virtual const char* what() const noexcept override { return m_message.c_str(); }
         };
+
+        class ExpectedEndOfInput : public std::exception
+        {
+            std::string m_message;
+        
+        public:
+            Position pos;
+            ExpectedEndOfInput(const Position& pos):
+                pos(pos),
+                m_message(std::format("Expected end of input at line: {}, col: {}  (pos: {}).", pos.line, pos.col, pos.pos))
+            {}
+
+            virtual const char* what() const noexcept override { return m_message.c_str(); }
+        };
     }
 }
