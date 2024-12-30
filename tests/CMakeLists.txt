@@ -5,6 +5,12 @@ target_link_libraries(main_test PRIVATE json_parser)
 
 add_test(NAME MainTest COMMAND main_test.exe)
 
+add_executable(file_tests file_tests.cpp)
+target_link_libraries(file_tests PRIVATE json_parser)
+target_compile_definitions(file_tests PRIVATE TEST_DIRECTORY_PATH="${CMAKE_SOURCE_DIR}/tests")
+
+add_test(NAME FileTests COMMAND file_tests.exe)
+
 
 # tests for each standalone header file
 
