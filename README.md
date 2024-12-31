@@ -10,7 +10,38 @@ This project is a JSON parser written in C++ with CMake. It provides functionali
 
 ## Usage
 
-### Parsing a JSON String
+Copy files from the folder **json_parser** into your project's directory and include them to your files.
+Or if you use cmake, 
+
+1. Clone the JSON parser repository into your project's directory:
+
+    ```
+    git clone https://github.com/Hayk10002/json_parser.git
+    ```
+
+1. Modify your `CMakeLists.txt` to include the JSON parser:
+
+    ```
+    cmake_minimum_required(VERSION 3.18)
+    project(YourProjectName)
+
+    # Add the JSON parser
+    add_subdirectory(json_parser)
+
+    # Link the JSON parser library to your target
+    add_executable(YourExecutable main.cpp)
+    target_link_libraries(YourExecutable PRIVATE json_parser)
+    ```
+
+1. And then include the JSON parser headers in your source files:
+
+    ```
+    #include "json.hpp"
+    #include "json_parser.hpp"
+    ```
+
+
+## Parsing a JSON String
 
 To parse a JSON string, use the `JsonParser` class. Here is an example:
 
@@ -45,4 +76,11 @@ int main() {
 
     return 0;
 }
+```
+
+## Notes
+
+This library treats the hex escape sequences (\uhhhh) as utf-16 encoded, so if the encoding is not correct, InvalidEncoding error will be returned. For example the string \uD83D\uDE00 in json string will be read as 😀.
+
+
 
