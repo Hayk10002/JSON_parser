@@ -12,8 +12,6 @@ if(ENABLE_TESTING)
     enable_testing()
 endif()
 
-add_subdirectory(utils)
-add_subdirectory(utf8_string)
 add_subdirectory(json_parser)
 add_subdirectory(tests)
 

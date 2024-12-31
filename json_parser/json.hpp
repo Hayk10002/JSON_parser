@@ -10,7 +10,6 @@
 #include <algorithm>
 
 #include "utils.hpp"
-#include "utf8_string.hpp"
 namespace hayk10002
 {   
 
@@ -22,7 +21,7 @@ namespace hayk10002
         using BoolType      = bool;
         using IntType       = int64_t;
         using FloatType     = double;
-        using StringType    = UTF8string;
+        using StringType    = std::string;
         using ArrayType     = std::vector<Json>;
         using ObjectType    = std::unordered_map<StringType, Json>;
 

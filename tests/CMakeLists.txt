@@ -51,8 +51,8 @@ set(TARGET_NAMES
     json_parser
     json_parser
     json_parser
-    utils
-    utils
+    json_parser
+    json_parser
 )
 
 # Call the function for each file in the list

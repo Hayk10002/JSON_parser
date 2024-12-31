@@ -319,7 +319,7 @@ namespace lexer
     {
     public:
         using InputType = Cursor;
-        using ReturnType = std::tuple<UTF8string, uint32_t>;
+        using ReturnType = std::tuple<std::string, uint32_t>;
         using ErrorType = ParserError<InvalidEncoding, UnexpectedEndOfInput>;
 
         itlib::expected<ReturnType, ErrorType> parse(InputType& input)
@@ -380,7 +380,7 @@ namespace lexer
             }
 
             input.move(numBytes);
-            return std::tuple{UTF8string(std::string(bytes)), codepoint};
+            return std::tuple{std::string(bytes), codepoint};
         }
 
     };
@@ -698,7 +698,7 @@ namespace lexer
                 // if anything other then backslash for escape, add it to the result and continue
                 if (codepoint != '\\')
                 {
-                    result += utf8_str.utf8_sstring();
+                    result += utf8_str;
                     continue;
                 }
 
