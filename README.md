@@ -10,7 +10,7 @@ This project is a JSON parser written in C++ with CMake. It provides functionali
 
 ## Usage
 
-Copy files from the folder **json_parser** into your project's directory and include them to your files.
+Copy files from the folder **json_parser** into your project's directory and include the files `json.hpp` and `json_parser.hpp` to your files.
 Or if you use cmake, 
 
 1. Clone the JSON parser repository into your project's directory:
